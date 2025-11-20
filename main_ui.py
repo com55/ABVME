@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QVBoxLayout, QPushButton, QWidget, QFileDialog, QStatusBar
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
-from main import ModMakerCore, log
+from main import AssetInfo, ModMakerCore, log
 import sys
 from pathlib import Path
 import logging
@@ -10,13 +10,13 @@ class LoaderThread(QThread):
     
     def __init__(self, core, files):
         super().__init__()
-        self.core = core
+        self.core: ModMakerCore = core
         self.files = files
     
     def run(self):
-        self.core.load(self.files)
+        self.core.load_files(self.files)
         assets = self.core.get_available_assets()
-        log.info(f"Successfully loaded: {len(self.core.loaded_files)} files.")
+        log.info(f"Successfully loaded: {len(self.core.source_paths)} files.")
         self.finished.emit(assets)
 
 class StatusBarHandler(logging.Handler):
@@ -107,6 +107,7 @@ class ModMakerUI(QMainWindow):
         
         for row, asset in enumerate(assets):
             # Name
+            asset: AssetInfo = asset
             name_item = QTableWidgetItem(asset.name)
             name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row, 0, name_item)
@@ -122,17 +123,9 @@ class ModMakerUI(QMainWindow):
             self.table.setItem(row, 2, path_id_item)
             
             # Type
-            type_item = QTableWidgetItem(asset.type)
+            type_item = QTableWidgetItem(asset.obj_type.name)
             type_item.setFlags(type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row, 3, type_item)
-            
-            # Object Info
-            obj_info = ""
-            if hasattr(asset.obj, "m_Name"):
-                obj_info = f"Name: {asset.obj.m_Name}"
-            obj_item = QTableWidgetItem(obj_info)
-            obj_item.setFlags(obj_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.table.setItem(row, 4, obj_item)
         
         # Adjust column widths
         self.table.resizeColumnsToContents()
