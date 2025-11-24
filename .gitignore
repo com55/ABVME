@@ -11,3 +11,5 @@ wheels/
 
 # Test file
 test*
+
+.cursor/

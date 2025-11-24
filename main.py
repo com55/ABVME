@@ -2,11 +2,10 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from pprint import pprint
-from tracemalloc import start
-from typing import Any, Literal, Optional, Union
+from typing import Any, BinaryIO, Literal, Optional, Union
 from PIL.Image import Image
 from UnityPy import Environment
-from UnityPy.files import ObjectReader
+from UnityPy.files import ObjectReader, SerializedFile
 from UnityPy.classes import Texture2D, TextAsset, Mesh
 from UnityPy.enums import ClassIDType
 from UnityPy.tools.extractor import exportTextAsset, exportTexture2D, exportMesh
@@ -24,7 +23,7 @@ log = logging.getLogger("ModMaker")
 available_assets = [
     ClassIDType.Texture2D, 
     ClassIDType.TextAsset, 
-    ClassIDType.Mesh
+    # ClassIDType.Mesh
 ]
 
 class ResultStatus(str, Enum):
@@ -70,20 +69,21 @@ class ExportResult:
         return self.status == ResultStatus.COMPLETE
 
 class AssetInfo:
-    def __init__(self, obj: ObjectReader):
+    def __init__(self, obj: ObjectReader, source_path: str = ""):
         self._obj: ObjectReader = obj
         self.name: str = self._obj.peek_name() or ""
         self.container: str = self._obj.container or ""
         self.path_id: str = str(self._obj.path_id) or ""
         self.obj_type: ClassIDType = self._obj.type
-        self.readed_data = None
-    
+        self.source_path: str = source_path
+        self._readed_data = None
+
     def _get_readed_data(self):
-        if self.readed_data:
-            return self.readed_data
+        if self._readed_data:
+            return self._readed_data
         else:
-            self.readed_data = self._obj.read()
-            return self.readed_data
+            self._readed_data = self._obj.read()
+            return self._readed_data
     
     def get_preview(self) -> PreviewResult:
         data = self._get_readed_data()
@@ -97,12 +97,12 @@ class AssetInfo:
         else:
             return PreviewResult(
                 data=None, 
-                asset_type=type(data).__name__, # ส่งชื่อ type กลับไปบอกหน่อยว่าเป็นอะไร
+                asset_type=type(data).__name__,
                 status=ResultStatus.UNSUPPORTED,
                 message="Preview not available for this asset type"
             )
 
-    def edit_data(self, new_data) -> EditResult:
+    def edit_data(self, new_data: Image | str | BinaryIO) -> EditResult:
         data = self._get_readed_data()
         
         if isinstance(data, Texture2D):
@@ -123,7 +123,21 @@ class AssetInfo:
                 )
         elif isinstance(data, TextAsset):
             try:
-                data.m_Script = new_data
+                if isinstance(new_data, str):
+                    if Path(new_data).exists():
+                        new_script_data = Path(new_data).read_text(encoding="utf-8", errors="surrogateescape")
+                    else:
+                        new_script_data = new_data
+                elif isinstance(new_data, BinaryIO):
+                    new_script_data = new_data.read().decode("utf-8", errors="surrogateescape")
+                else:
+                    return EditResult(
+                        status=ResultStatus.ERROR, 
+                        data=data.m_Script, 
+                        error=ValueError("Unsupported data type"),
+                        message="Unsupported data type"
+                    )
+                data.m_Script = new_script_data
                 data.save()
                 return EditResult(
                     status=ResultStatus.COMPLETE, 
@@ -242,16 +256,27 @@ class ModMakerCore:
                     current_trim += 1
                     if i == max_try - 1:
                         log.error(f"Failed to load {file}: {e}")
-            log.info(f"Loaded {file} in {time.time() - start_time:.4f} seconds")
+            log.info(f"Took {time.time() - start_time:.4f} seconds to load {file}")
         self._env = env
         return self.get_available_assets()
 
     def get_available_assets(self) -> list[AssetInfo]:
         assets = self._available_assets
         if not assets:
+            # Create lookup map for source paths
+            file_map = {f: path for path, f in self._env.files.items()}
+            
             for obj in self._env.objects:
                 if obj.type in available_assets:
-                    assets.append(AssetInfo(obj))
+                    # Find source path
+                    source_path = ""
+                    target = obj.assets_file
+                    if target in file_map:
+                        source_path = file_map[target]
+                    elif hasattr(target, "parent") and target.parent in file_map:
+                        source_path = file_map[target.parent]
+
+                    assets.append(AssetInfo(obj, source_path))
         return assets
 
 if __name__ == "__main__":
