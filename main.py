@@ -1,3 +1,7 @@
+from UnityPy.files.SerializedFile import SerializedFile
+from UnityPy.files.BundleFile import BundleFile
+from UnityPy.files.WebFile import WebFile
+from UnityPy.streams.EndianBinaryReader import EndianBinaryReader
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -229,10 +233,16 @@ class ModMakerCore:
     def __init__(self):
         self._env: Environment
         self._available_assets: list[AssetInfo] = []
+        self._source_paths: list[dict[str, SerializedFile | BundleFile | WebFile | EndianBinaryReader]] = []
     
     @property
-    def source_paths(self) -> list[str]:
-        return list(self._env.files.keys()) if self._env and self._env.files else []
+    def source_paths(self) -> list[dict[str, SerializedFile | BundleFile | WebFile | EndianBinaryReader]]:
+        if self._source_paths:
+            return self._source_paths
+        else:
+            for path, file in self._env.files.items():
+                self._source_paths.append({path: file})
+            return self._source_paths
 
     def load_files(self, file_list: list[str]) -> list[AssetInfo]:
         env = Environment()
@@ -263,22 +273,62 @@ class ModMakerCore:
     def get_available_assets(self) -> list[AssetInfo]:
         assets = self._available_assets
         if not assets:
-            # Create lookup map for source paths
-            file_map = {f: path for path, f in self._env.files.items()}
             
             for obj in self._env.objects:
                 if obj.type in available_assets:
                     # Find source path
                     source_path = ""
                     target = obj.assets_file
-                    if target in file_map:
-                        source_path = file_map[target]
-                    elif hasattr(target, "parent") and target.parent in file_map:
-                        source_path = file_map[target.parent]
-
+                    if target in self.source_paths:
+                        source_path = self.source_paths[target]
+                    elif hasattr(target, "parent") and target.parent in self.source_paths:
+                        source_path = self.source_paths[target.parent]
                     assets.append(AssetInfo(obj, source_path))
         return assets
 
+    def save_all_changed_files(
+        self,
+        output_dir: str | Path,
+        packer: Literal["lz4", "lzma", "original"] | None = None
+    ):
+        output_dir = Path(output_dir).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        effective_packer = packer or "original"
+
+        saved = 0
+
+        for file in self._env.files.values():
+            if not isinstance(file, EndianBinaryReader) and file.is_changed:
+                output_path = output_dir / file.name
+                self._save_fileobj(file, output_path, effective_packer)
+                saved += 1
+                log.info(f"Saved {output_path}")
+        log.info(f"Saved {saved} changed files to {output_dir}")
+
+    def save_file(
+        self,
+        file: str,
+        output_path: str | Path,
+        packer: Literal["lz4", "lzma", "original"] | None = None
+    ):
+        target_file = self._env.files.get(file)
+        if not target_file:
+            log.error(f"File {file} not found in loaded files.")
+            return
+
+        if not isinstance(target_file, EndianBinaryReader):
+            output_path = Path(output_path).resolve()
+            effective_packer = packer or "original"
+            self._save_fileobj(target_file, output_path, effective_packer)
+            log.info(f"Saved {output_path}")
+
+    def _save_fileobj(self, file_obj, output_path: Path, packer: str):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "wb") as f:
+            f.write(file_obj.save(packer=packer))
+        log.info(f"Saved {output_path}")
+    
 if __name__ == "__main__":
     logging.getLogger().setLevel(logging.DEBUG)
     test = ModMakerCore()
@@ -291,3 +341,5 @@ if __name__ == "__main__":
     for data in test.get_available_assets():
         print(data.name)
     pprint(test.source_paths)
+    for file in test._env.files.values():
+        pprint(file.__dict__)

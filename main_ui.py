@@ -1,8 +1,9 @@
+import multiprocessing
 from PySide6.QtWidgets import QTableWidgetItem
 from typing import Optional
 from PySide6.QtCore import Signal, SignalInstance
 
-from PySide6 import QtGui
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
     QApplication, QHeaderView, QMainWindow, QTableWidget, QTableWidgetItem, 
     QVBoxLayout, QHBoxLayout, QPushButton, QWidget, QFileDialog, 
@@ -373,12 +374,86 @@ class ModMakerUI(QMainWindow):
                             should_show = False; break
                             
             self.table.setRowHidden(row, not should_show)
-                      
+            
+
+class SingleInstance(QObject):
+    messageReceived = Signal()
+
+    def __init__(self, key: str):
+        super().__init__()
+        self.key = key
+        self.server = QLocalServer()
+
+        # ป้องกันกรณี server ค้างจาก crash
+        # QLocalServer.removeServer(self.key)
+
+    def start(self):
+        result = self.server.listen(self.key)
+
+        # ถ้า listen ไม่ได้ → แปลว่ามี instance อยู่แล้ว
+        if not result:
+            self._notify_existing_instance()
+            return False
+        
+        # โหมดปกติ → รอรับการเชื่อมต่อจาก instance อื่น
+        self.server.newConnection.connect(self._handle_connection)
+        return True
+
+    def _notify_existing_instance(self):
+        """ส่งสัญญาณไปยัง instance เดิมเพื่อให้ดึงหน้าต่างขึ้นมา"""
+        socket = QLocalSocket()
+        socket.connectToServer(self.key)
+        if socket.waitForConnected(500):
+            socket.write(b"activate")
+            socket.flush()
+            socket.waitForBytesWritten(500)
+        socket.close()
+
+    def _handle_connection(self):
+        """Instance ใหม่พยายามเปิด → รับข้อความ แล้ว emit signal"""
+        socket = self.server.nextPendingConnection()
+        if socket:
+            socket.readAll()
+            socket.close()
+        self.messageReceived.emit()
+
 def main():
-    app = QApplication(sys.argv)
-    app.setStyle('Fusion')
+    multiprocessing.freeze_support()
+
+    app = QApplication.instance()
+    if not app:
+        app = QApplication(sys.argv)
+        app.setStyle("Fusion")
+
+    # ชื่อ Instance (จะถูกใช้เป็นชื่อ IPC channel)
+    single = SingleInstance("ModMakerUI_Instance")
+
+    # ถ้ามี instance อยู่แล้ว → ไม่เปิดใหม่
+    if not single.start():
+        print("Program already running → Showing existing window")
+        return
+
+    # ตัวหน้าต่างหลัก
     window = ModMakerUI()
     window.show()
+
+    # เมื่อมี instance ใหม่เปิด → ดึงหน้าต่างเดิมขึ้นมา
+    def bring_to_front():
+        def do_raise():
+            # บังคับให้ขึ้นหน้าสุดชั่วคราว
+            window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+            window.show()
+            window.raise_()
+            window.activateWindow()
+
+            # ปิด on-top เพื่อกลับสภาพเดิม
+            window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+            window.show()
+
+        QTimer.singleShot(150, do_raise)
+
+    single.messageReceived.connect(bring_to_front)
+
     sys.exit(app.exec())
 
 if __name__ == "__main__":
