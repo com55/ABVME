@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from pprint import pprint
 from typing import Any, BinaryIO, Literal, Optional, Union
+from PIL import Image as PILImage
 from PIL.Image import Image
 from UnityPy import Environment
 from UnityPy.files import ObjectReader, SerializedFile
@@ -80,6 +81,7 @@ class AssetInfo:
         self.path_id: str = str(self._obj.path_id) or ""
         self.obj_type: ClassIDType = self._obj.type
         self.source_path: str = source_path
+        self.is_changed: bool = False
         self._readed_data = None
 
     def _get_readed_data(self):
@@ -111,8 +113,29 @@ class AssetInfo:
         
         if isinstance(data, Texture2D):
             try:
-                data.set_image(new_data)
+                image_data = None
+                if isinstance(new_data, Image):
+                    image_data = new_data
+                elif isinstance(new_data, (str, Path)):
+                    with PILImage.open(new_data) as img:
+                        image_data = img.copy()
+                elif isinstance(new_data, BinaryIO):
+                    with PILImage.open(new_data) as img:
+                        image_data = img.copy()
+                else:
+                    return EditResult(
+                        status=ResultStatus.ERROR,
+                        data=data.image,
+                        error=TypeError("Unsupported data type for Texture2D"),
+                        message="Unsupported data type for Texture2D editing."
+                    )
+
+                if image_data is None:
+                    raise ValueError("Loaded image data is empty.")
+
+                data.set_image(image_data)
                 data.save()
+                self.is_changed = True
                 return EditResult(
                     status=ResultStatus.COMPLETE, 
                     data=data.image,
@@ -143,6 +166,7 @@ class AssetInfo:
                     )
                 data.m_Script = new_script_data
                 data.save()
+                self.is_changed = True
                 return EditResult(
                     status=ResultStatus.COMPLETE, 
                     data=data.m_Script,
@@ -166,7 +190,7 @@ class AssetInfo:
                 message=f"Editing not supported for {type(data).__name__}"
             )
     
-    def export(self, output_dir: str | Path) -> ExportResult:
+    def export(self, output_dir: str | Path, output_name: Optional[str] = None) -> ExportResult:
         # 1. เช็ค Type
         obj_data = self._get_readed_data()
         if not isinstance(obj_data, (TextAsset, Texture2D, Mesh)):
@@ -181,8 +205,11 @@ class AssetInfo:
             output_dir.mkdir(parents=True, exist_ok=True)
             
             need_to_add_path_id = False
-            if self.container:
-                full_name = Path(self.container).name 
+            
+            if output_name:
+                full_name = output_name
+            elif self.container:
+                full_name = Path(self.container).name
             else:
                 full_name = self.name
                 need_to_add_path_id = True
@@ -252,6 +279,11 @@ class ModMakerCore:
             start_time = time.time()
             with open(file, "rb") as f:
                 file_byte = f.read()
+                
+            # เช็คว่า file header เป็น UnityFS ไหม
+            if len(file_byte) >= 8 and file_byte[:7] != b"UnityFS":
+                log.warning(f"File {file} does not have UnityFS header, skipping...")
+                continue
             current_trim = 0
             for i in range(max_try):
                 try:
