@@ -23,9 +23,10 @@ from PySide6.QtWidgets import (
     QLabel,
     QSplitter,
     QMessageBox,
+    QProgressBar,
 )
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from main import AssetInfo, ModMakerCore, log, ResultStatus
+from main import AssetInfo, ModMakerCore, log, ResultStatus, EditResult
 from photoviewer import PhotoViewer
 from custom_filter_header import FilterHeader
 from PIL.Image import Image
@@ -42,6 +43,26 @@ class LoaderThread(QThread):
         assets = self.core.load_files(self.files)
         log.info(f"Successfully loaded: {len(self.core.source_paths)} files.")
         self.finished.emit(assets)
+
+
+class EditThread(QThread):
+    finished = Signal(object, object)  # asset, result
+
+    def __init__(self, asset: AssetInfo, source: str):
+        super().__init__()
+        self.asset = asset
+        self.source = source
+
+    def run(self):
+        try:
+            result = self.asset.edit_data(self.source)
+        except Exception as exc:
+            result = EditResult(
+                status=ResultStatus.ERROR,
+                message=f"Edit failed: {exc}",
+                error=exc,
+            )
+        self.finished.emit(self.asset, result)
 
 class StatusBarHandler(logging.Handler):
     def __init__(self, signal: SignalInstance):
@@ -123,6 +144,16 @@ class ModMakerUI(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
         self.status_bar.setStyleSheet("background-color: '#3c3c3c';")
+        self.progress_bar = QProgressBar()
+        self.status_bar.setSizeGripEnabled(False)
+        self.status_bar.setContentsMargins(5, 0, 5, 0)
+        self.progress_bar.setRange(0, 0)  # busy indicator
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setMaximumWidth(int(self.width()/2))
+        self.progress_bar.setVisible(False)
+        self.status_bar.addPermanentWidget(self.progress_bar)
+        self._active_background_tasks = 0
+        self.edit_thread: EditThread | None = None
         
         self.log_signal.connect(self.on_log_received)
         
@@ -276,6 +307,20 @@ class ModMakerUI(QMainWindow):
         if files:
             self._start_loading_from_paths(files)
 
+    def _begin_background_task(self, message: str):
+        self._active_background_tasks += 1
+        self.progress_bar.setVisible(True)
+        self.status_bar.showMessage(message)
+
+    def _end_background_task(self, message: str | None = None):
+        self._active_background_tasks = max(0, self._active_background_tasks - 1)
+        if self._active_background_tasks == 0:
+            self.progress_bar.setVisible(False)
+            if message:
+                self.status_bar.showMessage(message)
+        elif message:
+            self.status_bar.showMessage(message)
+
     def _start_loading_from_paths(self, file_paths: list[str]):
         valid_files = [path for path in file_paths if Path(path).is_file()]
         if not valid_files:
@@ -296,6 +341,7 @@ class ModMakerUI(QMainWindow):
         self.loader_thread.start()
 
         self._update_action_buttons([])
+        self._begin_background_task("Loading bundle files...")
 
     def _update_action_buttons(self, selected_rows=None):
         if selected_rows is None:
@@ -425,13 +471,26 @@ class ModMakerUI(QMainWindow):
         return self._apply_edit_for_asset(asset, str(file_path))
 
     def _apply_edit_for_asset(self, asset: AssetInfo, source: str):
-        try:
-            result = asset.edit_data(source)
-        except Exception as exc:
-            message = f"Edit failed for {asset.name}: {exc}"
-            self.log_signal.emit(message, logging.ERROR)
-            log.error(message, exc_info=True)
+        if self.edit_thread and self.edit_thread.isRunning():
+            self.log_signal.emit("Another edit is currently running.", logging.WARNING)
             return False
+
+        self._begin_background_task(f"Editing {asset.name}...")
+        self.edit_thread = EditThread(asset, source)
+        self.edit_thread.finished.connect(self._on_edit_thread_finished)
+        self.edit_thread.start()
+        return True
+
+    def _on_edit_thread_finished(self, asset_obj, result_obj):
+        self._end_background_task()
+        self.edit_thread = None
+
+        asset = asset_obj if isinstance(asset_obj, AssetInfo) else None
+        result = result_obj if isinstance(result_obj, EditResult) else None
+
+        if not asset or not result:
+            self.log_signal.emit("Edit thread returned invalid data.", logging.ERROR)
+            return
 
         level = logging.INFO if result.is_success else logging.ERROR
         message = result.message or (f"Edited {asset.name}" if result.is_success else f"Failed to edit {asset.name}")
@@ -440,9 +499,11 @@ class ModMakerUI(QMainWindow):
             log.info(message)
             self.on_asset_selected()
             self._refresh_asset_display(asset)
-        return result.is_success
+        else:
+            log.error(message)
     
     def on_loading_complete(self, assets: list[AssetInfo]):
+        self._end_background_task("Loading complete.")
         # Re-enable the load button
         self.load_button.setEnabled(True)
         self.load_button.setText("Load Bundle Files")

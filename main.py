@@ -304,17 +304,17 @@ class ModMakerCore:
 
     def get_available_assets(self) -> list[AssetInfo]:
         assets = self._available_assets
+        bundle_file_dict = {v: k for k, v in self._env.files.items()}
         if not assets:
-            
             for obj in self._env.objects:
                 if obj.type in available_assets:
                     # Find source path
                     source_path = ""
                     target = obj.assets_file
-                    if target in self.source_paths:
-                        source_path = self.source_paths[target]
-                    elif hasattr(target, "parent") and target.parent in self.source_paths:
-                        source_path = self.source_paths[target.parent]
+                    if target in bundle_file_dict:
+                        source_path = bundle_file_dict[target]
+                    elif hasattr(target, "parent") and target.parent in bundle_file_dict:
+                        source_path = bundle_file_dict[target.parent]
                     assets.append(AssetInfo(obj, source_path))
         return assets
 
@@ -370,8 +370,8 @@ if __name__ == "__main__":
     files = list(str(f.resolve().as_posix()) for f in Path("test").rglob("*.bundle"))
     test.load_files(files)
     # pprint(test._env.files)
-    for data in test.get_available_assets():
-        print(data.name)
-    pprint(test.source_paths)
-    for file in test._env.files.values():
-        pprint(file.__dict__)
+    # for data in test.get_available_assets():
+    #     print(data.name)
+    # pprint(test.source_paths)
+    # for file in test._env.files.values():
+    #     pprint(file.__dict__)
