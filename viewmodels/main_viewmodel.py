@@ -1,0 +1,251 @@
+"""
+Main ViewModel - MVVM Pattern
+Presentation logic and state management for the main window
+"""
+
+import logging
+from pathlib import Path
+from typing import Optional
+
+from PySide6.QtCore import QObject, Signal
+
+from models import ModMakerCore, AssetInfo, EditResult, ExportResult
+from services import LoaderWorker, EditWorker
+
+
+log = logging.getLogger("ModMaker")
+
+
+class MainViewModel(QObject):
+    """
+    ViewModel for main window
+    Manages application state and business logic
+    Provides data binding through Qt Signals
+    """
+    
+    # Signals for data binding with View
+    assets_loaded = Signal(list)  # List of AssetInfo
+    loading_started = Signal(str)  # Status message
+    loading_finished = Signal(str)  # Status message
+    
+    edit_started = Signal(str)  # Status message
+    edit_finished = Signal(object, object)  # asset, result
+    
+    export_completed = Signal(str, int)  # Message, log level
+    
+    selection_changed = Signal(int)  # Number of selected assets
+    
+    status_message = Signal(str, int)  # Message, log level
+    
+    def __init__(self):
+        super().__init__()
+        self.core: Optional[ModMakerCore] = None
+        self.assets: list[AssetInfo] = []
+        self.selected_assets: list[AssetInfo] = []
+        
+        # Background workers
+        self.loader_worker: Optional[LoaderWorker] = None
+        self.edit_worker: Optional[EditWorker] = None
+        
+    def load_files_from_paths(self, file_paths: list[str]):
+        """
+        Load bundle files from given paths
+        
+        Args:
+            file_paths: List of file paths to load
+        """
+        valid_files = [path for path in file_paths if Path(path).is_file()]
+        if not valid_files:
+            self.status_message.emit("No valid bundle files were provided.", logging.WARNING)
+            return
+
+        self.loading_started.emit("Loading bundle files...")
+        
+        # Create worker thread
+        self.loader_worker = LoaderWorker(self.core or ModMakerCore(), valid_files)
+        self.loader_worker.finished.connect(self._on_loading_complete)
+        self.loader_worker.start()
+        
+    def _on_loading_complete(self, assets: list[AssetInfo]):
+        """Handle loading completion"""
+        self.assets = assets
+        self.core = self.loader_worker.core if self.loader_worker else None
+        
+        self.loading_finished.emit(f"Loaded {len(assets)} assets.")
+        self.assets_loaded.emit(assets)
+        
+        log.info(f"Successfully loaded: {len(self.core.source_paths) if self.core else 0} files.")
+        
+    def update_selection(self, selected_assets: list[AssetInfo]):
+        """
+        Update current selection
+        
+        Args:
+            selected_assets: List of selected AssetInfo objects
+        """
+        self.selected_assets = selected_assets
+        self.selection_changed.emit(len(selected_assets))
+        
+    def get_single_selected_asset(self) -> Optional[AssetInfo]:
+        """Get single selected asset if exactly one is selected"""
+        if len(self.selected_assets) == 1:
+            return self.selected_assets[0]
+        return None
+        
+    def can_edit_asset(self) -> bool:
+        """Check if editing is possible (exactly one asset selected)"""
+        return len(self.selected_assets) == 1
+        
+    def can_export_assets(self) -> bool:
+        """Check if export is possible (at least one asset selected)"""
+        return len(self.selected_assets) > 0
+        
+    def edit_asset(self, asset: AssetInfo, source_path: str) -> bool:
+        """
+        Edit asset with new data from source path
+        
+        Args:
+            asset: Asset to edit
+            source_path: Path to replacement data
+            
+        Returns:
+            True if edit started successfully, False otherwise
+        """
+        if self.edit_worker and self.edit_worker.isRunning():
+            self.status_message.emit("Another edit is currently running.", logging.WARNING)
+            return False
+
+        self.edit_started.emit(f"Editing {asset.name}...")
+        self.edit_worker = EditWorker(asset, source_path)
+        self.edit_worker.finished.connect(self._on_edit_finished)
+        self.edit_worker.start()
+        return True
+        
+    def _on_edit_finished(self, asset_obj, result_obj):
+        """Handle edit completion"""
+        asset = asset_obj if isinstance(asset_obj, AssetInfo) else None
+        result = result_obj if isinstance(result_obj, EditResult) else None
+
+        if not asset or not result:
+            self.status_message.emit("Edit thread returned invalid data.", logging.ERROR)
+            self.edit_finished.emit(None, None)
+            return
+
+        level = logging.INFO if result.is_success else logging.ERROR
+        message = result.message or (
+            f"Edited {asset.name}" if result.is_success else f"Failed to edit {asset.name}"
+        )
+        
+        self.status_message.emit(message, level)
+        self.edit_finished.emit(asset, result)
+        
+        if result.is_success:
+            log.info(message)
+        else:
+            log.error(message)
+            
+    def export_single_asset(self, asset: AssetInfo, output_path: Path) -> ExportResult:
+        """
+        Export single asset to specific path
+        
+        Args:
+            asset: Asset to export
+            output_path: Full output path including filename
+            
+        Returns:
+            ExportResult object
+        """
+        result = asset.export(output_path.parent, output_path.name)
+        
+        level = logging.INFO if result.is_success else logging.ERROR
+        message = result.message or (
+            "Export completed" if result.is_success else "Export failed"
+        )
+        
+        self.export_completed.emit(message, level)
+        
+        if result.is_success:
+            log.info(message)
+        else:
+            log.error(f"Failed to export {asset.name}: {result.message}")
+            
+        return result
+        
+    def export_multiple_assets(self, assets: list[AssetInfo], output_dir: Path) -> tuple[int, int]:
+        """
+        Export multiple assets to directory
+        
+        Args:
+            assets: List of assets to export
+            output_dir: Output directory path
+            
+        Returns:
+            Tuple of (successful_count, total_count)
+        """
+        successes = 0
+        total = len(assets)
+        
+        for asset in assets:
+            result = asset.export(output_dir)
+            if result.is_success:
+                successes += 1
+                log.info(result.message or f"Exported {asset.name}")
+            else:
+                log.error(f"Failed to export {asset.name}: {result.message}")
+
+        # Determine message and level
+        if successes == total:
+            message = f"Exported {successes} assets to {output_dir}."
+            level = logging.INFO
+        elif successes > 0:
+            message = f"Exported {successes}/{total} assets to {output_dir}. Check log for details."
+            level = logging.WARNING
+        else:
+            message = "All selected exports failed."
+            level = logging.ERROR
+
+        self.export_completed.emit(message, level)
+        return successes, total
+        
+    def get_suggested_export_filename(self, asset: AssetInfo) -> str:
+        """
+        Get suggested filename for exporting asset
+        
+        Args:
+            asset: Asset to get filename for
+            
+        Returns:
+            Suggested filename string
+        """
+        if asset.name and Path(asset.name).suffix:
+            return asset.name
+        elif asset.container:
+            return Path(asset.container).name
+        else:
+            suggested_name = f"{asset.name}_{asset.path_id}"
+            if asset.obj_type.name == "Texture2D":
+                suggested_name += ".png"
+            elif asset.obj_type.name == "TextAsset":
+                suggested_name += ".txt"
+            return suggested_name
+            
+    def get_edit_file_filter(self, asset: AssetInfo) -> Optional[str]:
+        """
+        Get file dialog filter for editing asset
+        
+        Args:
+            asset: Asset to get filter for
+            
+        Returns:
+            Filter string or None if editing not supported
+        """
+        if asset.obj_type.name == "Texture2D":
+            return "Image Files (*.png *.jpg *.jpeg *.bmp *.tga *.dds);;All Files (*.*)"
+        elif asset.obj_type.name == "TextAsset":
+            return "All Files (*.*)"
+        return None
+        
+    def is_editing_supported(self, asset: AssetInfo) -> bool:
+        """Check if editing is supported for asset type"""
+        return asset.obj_type.name in ["Texture2D", "TextAsset"]
+
