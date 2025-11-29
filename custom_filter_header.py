@@ -123,34 +123,52 @@ class FilterHeader(QHeaderView):
             current_filter = self.active_filters.get(col, unique_vals)
             if not isinstance(current_filter, list): current_filter = unique_vals
             
-            actions = []
+            checkbox_widgets: list[QCheckBox] = []
             
-            select_all = QAction("Select All", menu)
-            select_all.setCheckable(True)
-            select_all.setChecked(len(current_filter) == len(unique_vals))
+            select_all_checkbox = QCheckBox("Select All")
+            all_selected = len(current_filter) == len(unique_vals)
+            select_all_checkbox.setChecked(all_selected)
+            select_all_action = QWidgetAction(menu)
+            select_all_action.setDefaultWidget(select_all_checkbox)
             
             def toggle_all(checked):
-                for action in actions: action.setChecked(checked)
+                for widget in checkbox_widgets:
+                    widget.blockSignals(True)
+                    widget.setChecked(False)
+                    widget.blockSignals(False)
                 new_val = unique_vals if checked else []
                 self._apply_filter(col, new_val)
                 
-            select_all.triggered.connect(toggle_all)
-            menu.addAction(select_all)
+            select_all_checkbox.toggled.connect(toggle_all)
+            menu.addAction(select_all_action)
             menu.addSeparator()
             
             for val in unique_vals:
-                action = QAction(str(val), menu)
-                action.setCheckable(True)
-                action.setChecked(val in current_filter)
+                checkbox = QCheckBox(str(val))
+                checkbox.setChecked(val in current_filter and not all_selected)
                 
-                def on_triggered(checked, v=val):
-                    current_selected = [act.text() for act in actions if act.isChecked()]
+                def on_toggled(checked, v=val, widgets_ref=checkbox_widgets):
+                    if select_all_checkbox.isChecked():
+                        select_all_checkbox.blockSignals(True)
+                        select_all_checkbox.setChecked(False)
+                        select_all_checkbox.blockSignals(False)
+                    current_selected = [cb.text() for cb in widgets_ref if cb.isChecked()]
                     self._apply_filter(col, current_selected)
-                    select_all.setChecked(len(current_selected) == len(unique_vals))
+                    is_all = len(current_selected) == len(unique_vals)
+                    select_all_checkbox.blockSignals(True)
+                    select_all_checkbox.setChecked(is_all)
+                    if is_all:
+                        for cb in widgets_ref:
+                            cb.blockSignals(True)
+                            cb.setChecked(False)
+                            cb.blockSignals(False)
+                    select_all_checkbox.blockSignals(False)
 
-                action.triggered.connect(on_triggered)
-                menu.addAction(action)
-                actions.append(action)
+                checkbox.toggled.connect(on_toggled)
+                checkbox_action = QWidgetAction(menu)
+                checkbox_action.setDefaultWidget(checkbox)
+                menu.addAction(checkbox_action)
+                checkbox_widgets.append(checkbox)
                 
         else:
             # ... (Text Search Logic) ...

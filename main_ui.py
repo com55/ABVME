@@ -268,11 +268,11 @@ class ModMakerUI(QMainWindow):
         right_layout.setContentsMargins(5, 0, 5, 0)
 
         actions_layout = QHBoxLayout()
+        actions_layout.addStretch()
         self.edit_button = QPushButton("Edit Asset")
         self.edit_button.setEnabled(False)
         self.edit_button.clicked.connect(self.prompt_edit_selected_asset)
         actions_layout.addWidget(self.edit_button)
-        actions_layout.addStretch()
         self.export_button = QPushButton("Export Selected")
         self.export_button.setEnabled(False)
         self.export_button.clicked.connect(self.export_selected_assets)
@@ -384,20 +384,17 @@ class ModMakerUI(QMainWindow):
         return asset if isinstance(asset, AssetInfo) else None
 
     def _apply_changed_style(self, row: int, asset: AssetInfo):
-        is_changed = bool(getattr(asset, "is_changed", False))
-        for col in range(self.table.columnCount()):
-            item = self.table.item(row, col)
-            if not item:
-                continue
-            font = item.font()
-            font.setItalic(is_changed)
-            item.setFont(font)
+        item = self.table.item(row, 0)
+        if not item:
+            return
+        suffix = " *" if bool(getattr(asset, "is_changed", False)) else "   "
+        base_name = asset.name or ""
+        item.setText(f"{base_name}{suffix}")
 
     def _refresh_asset_display(self, asset: AssetInfo):
         for row in range(self.table.rowCount()):
             item = self.table.item(row, 0)
             if item and item.data(Qt.ItemDataRole.UserRole) is asset:
-                item.setText(asset.name)
                 self._apply_changed_style(row, asset)
                 break
 
@@ -526,10 +523,11 @@ class ModMakerUI(QMainWindow):
             all_sources.add(asset.source_path)
             
             # Name (Column 0) - Store AssetInfo in UserRole for easy retrieval
-            name_item = QTableWidgetItem(asset.name)
+            name_item = QTableWidgetItem()
             name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             name_item.setData(Qt.ItemDataRole.UserRole, asset) 
             self.table.setItem(row, 0, name_item)
+            self._apply_changed_style(row, asset)
             
             # Type (Column 1)
             type_item = QTableWidgetItem(asset.obj_type.name)
@@ -554,10 +552,6 @@ class ModMakerUI(QMainWindow):
             source_item.setFlags(source_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row, 4, source_item)
         
-        # Apply italics for changed rows
-        for row, asset in enumerate(assets):
-            self._apply_changed_style(row, asset)
-
         # กำหนดให้ Column 1 (Type) และ Column 4 (SourceFile) ใช้ระบบ Checkbox
         self.header.set_filter_boxes(1, list(all_types))
         self.header.set_filter_boxes(4, list(all_sources))
