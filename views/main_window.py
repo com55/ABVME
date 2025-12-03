@@ -115,12 +115,19 @@ class ModMakerMainWindow(QMainWindow):
         left_layout = QVBoxLayout(self.left_panel)
         left_layout.setContentsMargins(5, 0, 5, 0)
         
-        # Load button
+        # Buttons layout
         button_layout = QHBoxLayout()
         self.load_button = QPushButton("Load Bundle Files")
         self.load_button.clicked.connect(self._on_load_button_clicked)
         button_layout.addWidget(self.load_button)
         button_layout.addStretch()
+        
+        # Save button
+        self.save_button = QPushButton("Save as...")
+        self.save_button.setEnabled(False)
+        self.save_button.clicked.connect(self._on_save_button_clicked)
+        button_layout.addWidget(self.save_button)
+        
         left_layout.addLayout(button_layout)
         
         # Asset table
@@ -184,6 +191,11 @@ class ModMakerMainWindow(QMainWindow):
         # Export signals
         self.viewmodel.export_completed.connect(self._on_export_completed)
         
+        # Save signals
+        self.viewmodel.save_started.connect(self._on_save_started)
+        self.viewmodel.save_progress.connect(self._on_save_progress)
+        self.viewmodel.save_finished.connect(self._on_save_finished)
+        
         # Selection signals
         self.viewmodel.selection_changed.connect(self._on_selection_changed)
         
@@ -215,6 +227,9 @@ class ModMakerMainWindow(QMainWindow):
         self.preview_panel.show_placeholder("Select an asset from the list to view its preview.")
         self.asset_table.apply_filter(clear=True)
         
+        # Enable Save button if files loaded
+        self.save_button.setEnabled(len(assets) > 0)
+        
     def _on_edit_started(self, message: str):
         """Handle edit started"""
         self._begin_background_task(message)
@@ -244,6 +259,30 @@ class ModMakerMainWindow(QMainWindow):
     def _on_log_received(self, msg: str, level: int):
         """Handle log message received"""
         self._on_status_message(msg, level)
+        
+    def _on_save_started(self, message: str):
+        """Handle save operation started"""
+        self._begin_background_task(message)
+        
+    def _on_save_progress(self, current: int, total: int, filename: str):
+        """Handle save progress update"""
+        if total > 1:
+            # Multiple files - show progress
+            message = f"Saving files: {current}/{total} - {filename}"
+        else:
+            # Single file
+            message = f"Saving {filename}..."
+        self.status_bar.showMessage(message)
+        
+    def _on_save_finished(self, success: bool, message: str):
+        """Handle save operation completed"""
+        self._end_background_task(message)
+        
+        # Notify dialog if it exists
+        if hasattr(self, '_save_dialog') and self._save_dialog:
+            # For save all, close dialog; for save selected, keep it open
+            is_save_all = "file(s)" in message.lower() or "all" in message.lower()
+            self._save_dialog.on_save_finished(success, message, close_dialog=is_save_all)
         
     # ===== UI Event Handlers =====
     
@@ -276,6 +315,45 @@ class ModMakerMainWindow(QMainWindow):
     def _on_filter_changed(self):
         """Handle filter changed"""
         self.asset_table.apply_filter()
+        
+    def _on_save_button_clicked(self):
+        """Handle Save as... button click"""
+        from views.save_dialog import SaveDialog
+        
+        # Create and show dialog
+        dialog = SaveDialog(self.viewmodel, self)
+        
+        # Connect dialog signals
+        dialog.save_all_requested.connect(self._handle_save_all)
+        dialog.save_selected_requested.connect(self._handle_save_selected)
+        
+        # Store reference to update it later
+        self._save_dialog = dialog
+        
+        dialog.exec()
+        
+    def _handle_save_all(self, output_dir: str, packer: str):
+        """Handle save all request from dialog"""
+        from pathlib import Path
+        
+        success = self.viewmodel.save_all_files(Path(output_dir), packer)
+        if not success and hasattr(self, '_save_dialog'):
+            # Re-enable dialog if save didn't start
+            self._save_dialog.setEnabled(True)
+            
+    def _handle_save_selected(self, filepath: str, output_path: str, packer: str):
+        """Handle save selected file request from dialog"""
+        from pathlib import Path
+        
+        # Split output path into directory and filename
+        output_path_obj = Path(output_path)
+        output_dir = output_path_obj.parent
+        output_filename = output_path_obj.name
+        
+        success = self.viewmodel.save_selected_file(filepath, output_dir, packer, output_filename)
+        if not success and hasattr(self, '_save_dialog'):
+            # Re-enable dialog if save didn't start
+            self._save_dialog.setEnabled(True)
         
     def _on_edit_button_clicked(self):
         """Handle edit button click"""
