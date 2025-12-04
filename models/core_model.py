@@ -17,7 +17,7 @@ from .asset_model import AssetInfo
 
 
 # Configure logger
-log = logging.getLogger("ModMaker")
+log = logging.getLogger("AssetBundlesEditor")
 
 # Available asset types for extraction
 available_assets = [
@@ -27,9 +27,9 @@ available_assets = [
 ]
 
 
-class ModMakerCore:
+class AssetBundlesEditorCore:
     """
-    Core business logic for ModMaker
+    Core business logic for AssetBundlesEditor
     Handles loading Unity bundle files and managing assets
     """
     

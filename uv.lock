@@ -563,7 +563,7 @@ wheels = [
 ]
 
 [[package]]
-name = "modmaker"
+name = "AssetBundlesEditor"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

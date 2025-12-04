@@ -1,6 +1,6 @@
 """
 Application Entry Point
-Main application launcher for ModMaker Asset Viewer
+Main application launcher for AssetBundlesEditor Asset Viewer
 """
 
 import sys
@@ -10,7 +10,7 @@ import logging
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
-from views import ModMakerMainWindow
+from views import AssetBundlesEditorMainWindow
 from utilities import SingleInstance
 
 
@@ -22,7 +22,7 @@ logging.basicConfig(
 )
 
 
-def bring_window_to_front(window: ModMakerMainWindow):
+def bring_window_to_front(window: AssetBundlesEditorMainWindow):
     """
     Bring existing window to front when another instance tries to start
     
@@ -41,7 +41,15 @@ def bring_window_to_front(window: ModMakerMainWindow):
         window.show()
 
     QTimer.singleShot(150, do_raise)
-
+    
+def load_stylesheet(app: QApplication):
+    """Load QSS stylesheet"""
+    try:
+        with open("styles.qss", "r", encoding="utf-8") as f:
+            style = f.read()
+            app.setStyleSheet(style)
+    except Exception as e:
+        logging.error(f"Could not load stylesheet: {e}")
 
 def main():
     """Main application entry point"""
@@ -53,9 +61,12 @@ def main():
     if not app:
         app = QApplication(sys.argv)
         app.setStyle("Fusion")
+        
+        # Apply Stylesheet
+        load_stylesheet(app)
 
     # Single instance check
-    single = SingleInstance("ModMakerUI_Instance")
+    single = SingleInstance("AssetBundlesEditorUI_Instance")
 
     # If another instance is already running, don't start a new one
     if not single.start():
@@ -63,7 +74,7 @@ def main():
         return
 
     # Create and show main window
-    window = ModMakerMainWindow()
+    window = AssetBundlesEditorMainWindow()
     window.show()
 
     # Connect single instance signal to bring window to front

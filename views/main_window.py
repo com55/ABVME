@@ -6,7 +6,8 @@ Composes all UI components and wires them with ViewModel
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QEvent, Signal
+from PySide6.QtCore import QSize, Qt, QTimer, QEvent, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QStatusBar, QProgressBar, QSplitter,
@@ -21,10 +22,10 @@ from services import StatusBarHandler
 from models import AssetInfo
 
 
-log = logging.getLogger("ModMaker")
+log = logging.getLogger("AssetBundlesEditor")
 
 
-class ModMakerMainWindow(QMainWindow):
+class AssetBundlesEditorMainWindow(QMainWindow):
     """
     Main application window
     Follows MVVM pattern - composes Views and binds them to ViewModel
@@ -35,7 +36,7 @@ class ModMakerMainWindow(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ModMaker Asset Viewer")
+        self.setWindowTitle("Asset Bundles Editor")
         self.setMinimumSize(1000, 600)
         
         # Create ViewModel
@@ -52,14 +53,14 @@ class ModMakerMainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
-        self.status_bar.setStyleSheet("background-color: '#3c3c3c';")
+        # self.status_bar.setStyleSheet("background-color: '#3c3c3c';")
         
         self.progress_bar = QProgressBar()
         self.status_bar.setSizeGripEnabled(False)
         self.status_bar.setContentsMargins(5, 0, 5, 0)
         self.progress_bar.setRange(0, 0)  # Busy indicator
         self.progress_bar.setTextVisible(False)
-        self.progress_bar.setMaximumWidth(int(self.width()/2))
+        self.progress_bar.setMaximumWidth(int(self.width()/3))
         self.progress_bar.setVisible(False)
         self.status_bar.addPermanentWidget(self.progress_bar)
         
@@ -77,7 +78,7 @@ class ModMakerMainWindow(QMainWindow):
         
         # Setup handler
         self.status_handler = StatusBarHandler(self.log_signal)
-        logger = logging.getLogger("ModMaker")
+        logger = logging.getLogger("AssetBundlesEditor")
         logger.addHandler(self.status_handler)
         
     def _setup_ui(self):
@@ -117,13 +118,17 @@ class ModMakerMainWindow(QMainWindow):
         
         # Buttons layout
         button_layout = QHBoxLayout()
-        self.load_button = QPushButton("Load Bundle Files")
+        self.load_button = QPushButton("  Open Files")
+        self.load_button.setIcon(QIcon("assets/folder-open-regular.svg"))
+        self.load_button.setIconSize(QSize(16, 16))
         self.load_button.clicked.connect(self._on_load_button_clicked)
         button_layout.addWidget(self.load_button)
         button_layout.addStretch()
         
         # Save button
-        self.save_button = QPushButton("Save as...")
+        self.save_button = QPushButton("  Save as...")
+        self.save_button.setIcon(QIcon("assets/floppy-disk-regular.svg"))
+        self.save_button.setIconSize(QSize(16, 16))
         self.save_button.setEnabled(False)
         self.save_button.clicked.connect(self._on_save_button_clicked)
         button_layout.addWidget(self.save_button)
@@ -150,12 +155,16 @@ class ModMakerMainWindow(QMainWindow):
         actions_layout = QHBoxLayout()
         actions_layout.addStretch()
         
-        self.edit_button = QPushButton("Edit Asset")
+        self.edit_button = QPushButton("  Edit")
+        self.edit_button.setIcon(QIcon("assets/wand-magic-sparkles-solid.svg"))
+        self.edit_button.setIconSize(QSize(16, 16))
         self.edit_button.setEnabled(False)
         self.edit_button.clicked.connect(self._on_edit_button_clicked)
         actions_layout.addWidget(self.edit_button)
         
-        self.export_button = QPushButton("Export Selected")
+        self.export_button = QPushButton("  Export")
+        self.export_button.setIcon(QIcon("assets/file-export-solid.svg"))
+        self.export_button.setIconSize(QSize(16, 16))
         self.export_button.setEnabled(False)
         self.export_button.clicked.connect(self._on_export_button_clicked)
         actions_layout.addWidget(self.export_button)
@@ -207,7 +216,6 @@ class ModMakerMainWindow(QMainWindow):
     def _on_loading_started(self, message: str):
         """Handle loading started"""
         self.load_button.setEnabled(False)
-        self.load_button.setText("Loading...")
         self.asset_table.set_sorting_enabled(False)
         self.asset_table.clear_selection()
         self.export_button.setEnabled(False)
@@ -218,7 +226,6 @@ class ModMakerMainWindow(QMainWindow):
     def _on_loading_finished(self, message: str):
         """Handle loading finished"""
         self.load_button.setEnabled(True)
-        self.load_button.setText("Load Bundle Files")
         self._end_background_task(message)
         
     def _on_assets_loaded(self, assets: list[AssetInfo]):

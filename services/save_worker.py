@@ -8,10 +8,10 @@ from typing import Literal, Optional
 
 from PySide6.QtCore import QThread, Signal
 
-from models import ModMakerCore
+from models import AssetBundlesEditorCore
 
 
-log = logging.getLogger("ModMaker")
+log = logging.getLogger("AssetBundlesEditor")
 
 
 class SaveWorker(QThread):
@@ -26,7 +26,7 @@ class SaveWorker(QThread):
     
     def __init__(
         self, 
-        core: ModMakerCore,
+        core: AssetBundlesEditorCore,
         output_dir: Path,
         packer: Optional[Literal["lz4", "lzma", "original"]] = None,
         specific_file: Optional[str] = None,
@@ -36,7 +36,7 @@ class SaveWorker(QThread):
         Initialize SaveWorker
         
         Args:
-            core: ModMakerCore instance
+            core: AssetBundlesEditorCore instance
             output_dir: Output directory for saved files
             packer: Compression method (lz4, lzma, or original)
             specific_file: If set, save only this file; otherwise save all changed files

@@ -9,11 +9,11 @@ from typing import Optional, Literal, cast
 
 from PySide6.QtCore import QObject, Signal
 
-from models import ModMakerCore, AssetInfo, EditResult, ExportResult
+from models import AssetBundlesEditorCore, AssetInfo, EditResult, ExportResult
 from services import LoaderWorker, EditWorker, SaveWorker
 
 
-log = logging.getLogger("ModMaker")
+log = logging.getLogger("AssetBundlesEditor")
 
 
 class MainViewModel(QObject):
@@ -43,7 +43,7 @@ class MainViewModel(QObject):
     
     def __init__(self):
         super().__init__()
-        self.core: Optional[ModMakerCore] = None
+        self.core: Optional[AssetBundlesEditorCore] = None
         self.assets: list[AssetInfo] = []
         self.selected_assets: list[AssetInfo] = []
         
@@ -67,7 +67,7 @@ class MainViewModel(QObject):
         self.loading_started.emit("Loading bundle files...")
         
         # Create worker thread
-        self.loader_worker = LoaderWorker(ModMakerCore(), valid_files)
+        self.loader_worker = LoaderWorker(AssetBundlesEditorCore(), valid_files)
         self.loader_worker.finished.connect(self._on_loading_complete)
         self.loader_worker.start()
         

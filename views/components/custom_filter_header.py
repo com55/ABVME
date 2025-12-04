@@ -100,15 +100,15 @@ class FilterHeader(QHeaderView):
         
         # สร้าง Label สวยๆ
         header_label = QLabel(f"Filter: {col_name}")
-        header_label.setStyleSheet("""
-            QLabel {
-                font-weight: bold;
-                color: #444;
-                padding: 2px 5px;
-                background-color: #f0f0f0;
-                border: 1px solid #ccc;
-            }
-        """)
+        # header_label.setStyleSheet("""
+        #     QLabel {
+        #         font-weight: bold;
+        #         color: #444;
+        #         padding: 2px 5px;
+        #         background-color: #f0f0f0;
+        #         border: 1px solid #ccc;
+        #     }
+        # """)
         header_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
         # ใส่ Label ลงใน Menu

@@ -2,6 +2,7 @@
 # Posted by ekhumoro, modified by community. See post 'Timeline' for change history
 # Retrieved 2025-11-18, License - CC BY-SA 4.0
 
+from typing import Optional
 from PySide6 import QtCore, QtGui, QtWidgets
 
 SCALE_FACTOR = 1.25
@@ -15,10 +16,13 @@ class PhotoViewer(QtWidgets.QGraphicsView):
         self._zoom = 0
         self._pinned = False
         self._empty = True
-        self._scene = QtWidgets.QGraphicsScene(self)
+        self._scene = QtWidgets.QGraphicsScene(parent=self)
         self._photo = QtWidgets.QGraphicsPixmapItem()
         self._photo.setShapeMode(
             QtWidgets.QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
+        # Enable smooth scaling (Bilinear filtering)
+        self._photo.setTransformationMode(
+            QtCore.Qt.TransformationMode.SmoothTransformation)
         self._scene.addItem(self._photo)
         self.setScene(self._scene)
         self.setTransformationAnchor(
@@ -31,6 +35,10 @@ class PhotoViewer(QtWidgets.QGraphicsView):
             QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setBackgroundBrush(QtGui.QBrush(QtGui.QColor(30, 30, 30)))
         self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        # Enable smooth rendering (Antialiasing + SmoothPixmapTransform)
+        self.setRenderHints(
+            QtGui.QPainter.RenderHint.Antialiasing |
+            QtGui.QPainter.RenderHint.SmoothPixmapTransform)
 
     def hasPhoto(self):
         return not self._empty
@@ -53,7 +61,7 @@ class PhotoViewer(QtWidgets.QGraphicsView):
                     self.centerOn(self._photo)
                 self.updateCoordinates()
 
-    def setPhoto(self, pixmap=None):
+    def setPhoto(self, pixmap: Optional[QtGui.QPixmap] = None):
         if pixmap and not pixmap.isNull():
             self._empty = False
             self.setDragMode(QtWidgets.QGraphicsView.DragMode.ScrollHandDrag)

@@ -9,11 +9,11 @@ from PySide6.QtWidgets import (
 )
 from PIL.Image import Image
 
-from photoviewer import PhotoViewer
+from views.components.photoviewer import PhotoViewer
 from models import AssetInfo, ResultStatus
 
 
-log = logging.getLogger("ModMaker")
+log = logging.getLogger("AssetBundlesEditor")
 
 
 class PreviewPanelWidget(QWidget):
@@ -33,13 +33,13 @@ class PreviewPanelWidget(QWidget):
         
         # Create stacked widget for different preview types
         self.stack = QStackedWidget()
-        self.stack.setStyleSheet(
-            "QStackedWidget {"
-            " border: 1px solid #616161;"
-            " border-radius: 4px;"
-            " background-color: #1f1f1f;"
-            "}"
-        )
+        # self.stack.setStyleSheet(
+        #     "QStackedWidget {"
+        #     " border: 1px solid #616161;"
+        #     " border-radius: 4px;"
+        #     " background-color: #1f1f1f;"
+        #     "}"
+        # )
         
         # 1. Image Viewer (for Texture2D)
         self.image_viewer = PhotoViewer(self.stack)
@@ -47,13 +47,13 @@ class PreviewPanelWidget(QWidget):
         # 2. Text Editor (for TextAsset)
         self.text_editor = QTextEdit(self.stack)
         self.text_editor.setReadOnly(True)
-        self.text_editor.setStyleSheet(
-            "QTextEdit { "
-            "font-family: 'Consolas', 'Monospace'; "
-            "font-size: 10pt; "
-            "font-weight: normal; "
-            "}"
-        )
+        # self.text_editor.setStyleSheet(
+        #     "QTextEdit { "
+        #     "font-family: 'Consolas', 'Monospace'; "
+        #     "font-size: 10pt; "
+        #     "font-weight: normal; "
+        #     "}"
+        # )
         
         # 3. Placeholder (for Mesh/Unsupported)
         self.placeholder = QLabel("Preview not available")

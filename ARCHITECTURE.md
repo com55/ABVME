@@ -1,15 +1,15 @@
-# ModMaker Architecture - MVVM Pattern
+# AssetBundlesEditor Architecture - MVVM Pattern
 
 ## โครงสร้างโปรเจค
 
 ```
-ModMakerAlpha/
+AssetBundlesEditorAlpha/
 ├── app.py                      # จุดเริ่มต้นของแอปพลิเคชัน
 │
 ├── models/                     # Model Layer - Data & Business Logic
 │   ├── __init__.py
 │   ├── asset_model.py         # AssetInfo, ResultStatus, PreviewResult, etc.
-│   └── core_model.py          # ModMakerCore - โหลดและจัดการ Unity bundles
+│   └── core_model.py          # AssetBundlesEditorCore - โหลดและจัดการ Unity bundles
 │
 ├── views/                      # View Layer - UI Components
 │   ├── __init__.py
@@ -42,7 +42,7 @@ ModMakerAlpha/
 - **หน้าที่**: จัดเก็บข้อมูลและ business logic
 - **ไฟล์**:
   - `asset_model.py`: โครงสร้างข้อมูล (AssetInfo, Result types)
-  - `core_model.py`: Core logic (ModMakerCore)
+  - `core_model.py`: Core logic (AssetBundlesEditorCore)
 - **ไม่ควร**: มี dependencies กับ UI หรือ PySide6 widgets
 
 ### View Layer (`views/`)
@@ -134,6 +134,5 @@ View (Update UI)
 
 ## หมายเหตุ
 
-- ไฟล์ `photoviewer.py` และ `custom_filter_header.py` ยังอยู่ใน root เพราะเป็น standalone components
 - ใช้ Python 3.10+ (เพราะใช้ type hints แบบ `list[str]`)
 

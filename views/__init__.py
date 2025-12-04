@@ -2,13 +2,13 @@
 
 from .asset_table_widget import AssetTableWidget
 from .preview_panel_widget import PreviewPanelWidget
-from .main_window import ModMakerMainWindow
+from .main_window import AssetBundlesEditorMainWindow
 from .save_dialog import SaveDialog
 
 __all__ = [
     "AssetTableWidget",
     "PreviewPanelWidget",
-    "ModMakerMainWindow",
+    "AssetBundlesEditorMainWindow",
     "SaveDialog",
 ]
 

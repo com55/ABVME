@@ -1,0 +1,179 @@
+/* --- Global Style --- */
+QWidget {
+    background-color: #1e1e1e; /* สีพื้นหลังหลัก (Dark Grey) */
+    color: #cccccc;            /* สีตัวอักษรหลัก (Light Grey) */
+    font-family: "Segoe UI", "Roboto", sans-serif;
+    font-size: 10pt;
+}
+
+/* --- QMainWindow & Splitter --- */
+QMainWindow::separator {
+    background-color: #333333;
+    width: 2px;
+    height: 2px;
+}
+
+QSplitter::handle {
+    background-color: #333333;
+}
+
+QSplitter::handle:hover {
+    background-color: #007acc; /* สีฟ้าเมื่อเอาเมาส์ไปโดนเส้นคั่น */
+}
+
+/* --- Buttons (เหมือน Bootstrap/Material) --- */
+QPushButton {
+    background-color: #3c3c3c;
+    border: 1px solid #555555;
+    border-radius: 4px;        /* มุมโค้ง */
+    padding: 6px 12px;
+    color: white;
+    min-width: 80px;
+}
+
+QPushButton:hover {
+    background-color: #505050;
+    border-color: #007acc;     /* ขอบสีฟ้าเมื่อ Hover */
+}
+
+QPushButton:pressed {
+    background-color: #252526;
+    border-color: #005f9e;
+}
+
+QPushButton:disabled {
+    background-color: #2b2b2b;
+    color: #666666;
+    border-color: #333333;
+}
+
+/* --- Tables & Lists --- */
+QTableWidget, QListWidget {
+    background-color: #252526;
+    alternate-background-color: #2d2d30; /* สีของแถวเลขคู่ (ให้ต่างจากพื้นหลังนิดนึง) */
+    border: 1px solid #454545;
+    border-radius: 4px;
+    gridline-color: #333333;
+    selection-background-color: #094771; /* สีพื้นหลังตอนเลือกแถว */
+    selection-color: white;
+    outline: 0; /* ลบเส้นประเวลาคลิกเลือก */
+}
+
+/* เอฟเฟคตอนเอาเมาส์ชี้ (Hover) */
+QTableWidget::item:hover, QListWidget::item:hover {
+    background-color: #3e3e42; /* สีเทาที่สว่างขึ้นมาหน่อย */
+    color: white;
+}
+
+/* จัดการสีตัวอักษรใน Item ปกติ */
+QTableWidget::item, QListWidget::item {
+    color: #cccccc;
+    padding: 1px; /* เพิ่มระยะห่างให้ดูไม่อึดอัด */
+}
+
+/* ตอนเลือกแล้วเอาเมาส์ชี้ซ้ำ (Selected + Hover) */
+QTableWidget::item:selected:hover, QListWidget::item:selected:hover {
+    background-color: #0a568c; /* สีฟ้าเข้มขึ้นอีกนิด */
+}
+
+QHeaderView::section {
+    background-color: #323232;
+    color: #e0e0e0;
+    padding: 4px;
+    border: none;
+    border-bottom: 1px solid #007acc; /* ขีดเส้นใต้หัวตารางให้ดู Modern */
+    font-weight: bold;
+}
+
+/* --- Text Input & Logs --- */
+QLineEdit, QTextEdit, QPlainTextEdit {
+    background-color: #3c3c3c;
+    border: 1px solid #333333;
+    border-radius: 4px;
+    color: #d4d4d4;
+    selection-background-color: #264f78;
+}
+
+QLineEdit:focus, QTextEdit:focus {
+    border: 1px solid #007acc; /* Highlight สีฟ้าเมื่อพิมพ์ */
+}
+
+/* --- Scrollbars (ทำให้ดูโมเดิร์น ไม่ใช่แท่งเทาๆ เดิมๆ) --- */
+QScrollBar:vertical {
+    border: none;
+    background: #1e1e1e;
+    width: 10px;
+    margin: 0px 0px 0px 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: #424242;
+    min-height: 20px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #686868;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px; /* ซ่อนลูกศรขึ้นลง */
+}
+
+/* Horizontal Scrollbar style ... (Copy pattern from vertical) */
+QScrollBar:horizontal {
+    border: none;
+    background: #1e1e1e;
+    height: 10px;
+}
+QScrollBar::handle:horizontal {
+    background: #424242;
+    min-width: 20px;
+    border-radius: 5px;
+}
+QScrollBar::handle:horizontal:hover { background: #686868; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; }
+
+/* --- Status Bar --- */
+QStatusBar {
+    background-color: #4a4a4a; /* แถบสถานะสีฟ้า แบบ VS Code */
+    color: white;
+}
+
+/* --- Menu Bar --- */
+QMenuBar {
+    background-color: #333333;
+    color: #cccccc;
+}
+QMenuBar::item:selected {
+    background-color: #505050;
+}
+QMenu {
+    background-color: #252526;
+    color: #cccccc;
+    border: 1px solid #454545;
+}
+QMenu::item:selected {
+    background-color: #094771;
+}
+
+/* QProgressBar {
+  margin: 2px 0 0;
+  background: #404040;
+  color: #dadada;
+  border-top: 1px solid #191919 ;
+  border-bottom: 1px solid #3c3c3c ;
+  border-left: 1px solid #1d1e20 ;
+  border-right: 1px solid #434343 ;
+  border-radius: 6px ;
+
+  text-align: center;
+  font: bold;
+}
+
+QProgressBar::chunk {
+  background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                      stop:0 #3d9cc7, stop:0.1 #3a6dad, stop: 0.9 #3a6dad, stop:1 #101c3f);
+  border : 1px solid #111111;
+  border-radius: 6px ;
+} */

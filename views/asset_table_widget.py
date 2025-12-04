@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView
 )
 
-from custom_filter_header import FilterHeader
+from views.components.custom_filter_header import FilterHeader
 from models import AssetInfo
 
 
@@ -54,7 +54,7 @@ class AssetTableWidget(QWidget):
         self.table.verticalScrollBar().setSingleStep(10)
         self.table.horizontalScrollBar().setSingleStep(10)
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self.table.setStyleSheet("QTableWidget::item { padding-top: 5px; padding-bottom: 5px; }")
+        # self.table.setStyleSheet("QTableWidget::item { padding-top: 5px; padding-bottom: 5px; }")
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(True)
         self.table.setWordWrap(False)
@@ -115,6 +115,7 @@ class AssetTableWidget(QWidget):
             
             # Name (Column 0) - Store AssetInfo in UserRole
             name_item = QTableWidgetItem()
+            name_item.setToolTip(asset.name or "")
             name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             name_item.setData(Qt.ItemDataRole.UserRole, asset)
             self.table.setItem(row, 0, name_item)
@@ -122,16 +123,19 @@ class AssetTableWidget(QWidget):
             
             # Type (Column 1)
             type_item = QTableWidgetItem(asset.obj_type.name)
+            type_item.setToolTip(asset.obj_type.name)
             type_item.setFlags(type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row, 1, type_item)
             
             # PathID (Column 2)
             path_id_item = QTableWidgetItem(asset.path_id)
+            path_id_item.setToolTip(asset.path_id)
             path_id_item.setFlags(path_id_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row, 2, path_id_item)
             
             # Container (Column 3)
             container_item = QTableWidgetItem(asset.container)
+            container_item.setToolTip(asset.container)
             container_item.setFlags(container_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row, 3, container_item)
             
