@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
 from views import AssetBundlesEditorMainWindow
-from utilities import SingleInstance
+from utilities import SingleInstance, get_resource_path
 
 
 # Configure logging
@@ -45,7 +45,8 @@ def bring_window_to_front(window: AssetBundlesEditorMainWindow):
 def load_stylesheet(app: QApplication):
     """Load QSS stylesheet"""
     try:
-        with open("styles.qss", "r", encoding="utf-8") as f:
+        stylesheet_path = get_resource_path("styles.qss")
+        with open(stylesheet_path, "r", encoding="utf-8") as f:
             style = f.read()
             app.setStyleSheet(style)
     except Exception as e:
