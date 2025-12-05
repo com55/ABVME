@@ -84,7 +84,7 @@ jobs:
         run: |
           mkdir FinalBuild
           # ย้าย Main ไปซ่อนในโฟลเดอร์ Data
-          Move-Item -Path "dist_main\ABVME.dist" -Destination "FinalBuild\AssetBundlesEditorData"
+          Move-Item -Path "dist_main\app.dist" -Destination "FinalBuild\AssetBundlesEditorData"
           
           # ย้าย Launcher มาไว้หน้าสุด
           Move-Item -Path "dist_launcher\AssetBundlesEditor.exe" -Destination "FinalBuild\AssetBundlesEditor.exe"
@@ -185,7 +185,7 @@ jobs:
         run: |
           mkdir FinalBuild
           # ชื่อโฟลเดอร์ output ของ Nuitka จะเป็น {filename}.dist
-          mv dist_main/ABVME.dist FinalBuild/AssetBundlesEditorData
+          mv dist_main/app.dist FinalBuild/AssetBundlesEditorData
           mv dist_launcher/AssetBundlesEditor FinalBuild/AssetBundlesEditor
           
           # ให้สิทธิ์ execute
