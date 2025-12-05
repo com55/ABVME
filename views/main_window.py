@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QTimer, QEvent, Signal
+from PySide6.QtCore import QMimeData
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -17,7 +18,7 @@ from PySide6.QtWidgets import (
 from viewmodels import MainViewModel
 from views.asset_table_widget import AssetTableWidget
 from views.preview_panel_widget import PreviewPanelWidget
-from utilities import FileDropWidget
+from utilities import FileDropWidget, get_resource_str
 from services import StatusBarHandler
 from models import AssetInfo
 
@@ -119,7 +120,7 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         # Buttons layout
         button_layout = QHBoxLayout()
         self.load_button = QPushButton("  Open Files")
-        self.load_button.setIcon(QIcon("assets/folder-open-regular.svg"))
+        self.load_button.setIcon(QIcon(get_resource_str("assets/folder-open-regular.svg")))
         self.load_button.setIconSize(QSize(16, 16))
         self.load_button.clicked.connect(self._on_load_button_clicked)
         button_layout.addWidget(self.load_button)
@@ -127,7 +128,7 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         
         # Save button
         self.save_button = QPushButton("  Save as...")
-        self.save_button.setIcon(QIcon("assets/floppy-disk-regular.svg"))
+        self.save_button.setIcon(QIcon(get_resource_str("assets/floppy-disk-regular.svg")))
         self.save_button.setIconSize(QSize(16, 16))
         self.save_button.setEnabled(False)
         self.save_button.clicked.connect(self._on_save_button_clicked)
@@ -156,14 +157,14 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         actions_layout.addStretch()
         
         self.edit_button = QPushButton("  Edit")
-        self.edit_button.setIcon(QIcon("assets/wand-magic-sparkles-solid.svg"))
+        self.edit_button.setIcon(QIcon(get_resource_str("assets/wand-magic-sparkles-solid.svg")))
         self.edit_button.setIconSize(QSize(16, 16))
         self.edit_button.setEnabled(False)
         self.edit_button.clicked.connect(self._on_edit_button_clicked)
         actions_layout.addWidget(self.edit_button)
         
         self.export_button = QPushButton("  Export")
-        self.export_button.setIcon(QIcon("assets/file-export-solid.svg"))
+        self.export_button.setIcon(QIcon(get_resource_str("assets/file-export-solid.svg")))
         self.export_button.setIconSize(QSize(16, 16))
         self.export_button.setEnabled(False)
         self.export_button.clicked.connect(self._on_export_button_clicked)
@@ -463,9 +464,9 @@ class AssetBundlesEditorMainWindow(QMainWindow):
             
         return self.viewmodel.edit_asset(asset, str(file_path))
         
-    def eventFilter(self, obj, event):
+    def eventFilter(self, watched, event):
         """Event filter for preview drop targets"""
-        if obj in getattr(self, "_preview_drop_targets", []):
+        if watched in getattr(self, "_preview_drop_targets", []):
             event_type = event.type()
             drag_enter_types = {
                 QEvent.Type.DragEnter,
@@ -477,7 +478,7 @@ class AssetBundlesEditorMainWindow(QMainWindow):
 
             if event_type in drag_enter_types:
                 if self._preview_can_accept_drop(event):
-                    event.acceptProposedAction()
+                    event.accept()
                 else:
                     event.ignore()
                 return True
@@ -489,12 +490,12 @@ class AssetBundlesEditorMainWindow(QMainWindow):
                     return True
                 accepted = self._handle_preview_drop(paths)
                 if accepted:
-                    event.acceptProposedAction()
+                    event.accept()
                 else:
                     event.ignore()
                 return True
 
-        return super().eventFilter(obj, event)
+        return super().eventFilter(watched, event)
         
     def _preview_can_accept_drop(self, event) -> bool:
         """Check if preview can accept specific drop event"""
@@ -503,10 +504,11 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         return bool(self._event_local_file_paths(event))
         
     @staticmethod
-    def _event_local_file_paths(event) -> list[str]:
+    def _event_local_file_paths(event: QEvent) -> list[str]:
         """Extract local file paths from drop event"""
-        mime_data = event.mimeData() if hasattr(event, "mimeData") else None
-        if not mime_data or not mime_data.hasUrls():
+        get_mime = getattr(event, "mimeData", None)
+        mime_data = get_mime() if callable(get_mime) else None
+        if not isinstance(mime_data, QMimeData) or not mime_data.hasUrls():
             return []
         return [str(url.toLocalFile()) for url in mime_data.urls() if url.isLocalFile()]
         
