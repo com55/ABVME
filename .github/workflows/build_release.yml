@@ -23,31 +23,40 @@ jobs:
       - name: Install Dependencies
         run: uv sync --frozen
 
-      # 1. สร้าง Launcher Script (เรียก ABVME.exe จากโฟลเดอร์ข้างใน)
+      # 1. สร้าง Launcher Script
       - name: Create Launcher Script 📝
         shell: python
         run: |
           code = """
-          import subprocess, sys, os
+          import subprocess, sys, os, ctypes
           from pathlib import Path
           
-          # Path ไฟล์จริง: ./AssetBundlesEditorData/ABVME.exe
-          base_dir = Path(__file__).absolute().parent
-          target_exe = base_dir / "AssetBundlesEditorData" / "ABVME.exe"
-          
-          if not target_exe.exists():
-              # Fallback เผื่อหาไม่เจอ
-              print(f"Error: Cannot find application at {target_exe}")
-              input("Press Enter to exit...")
-              sys.exit(1)
+          def show_error(msg):
+              ctypes.windll.user32.MessageBoxW(0, msg, "Launcher Error", 0x10)
+
+          try:
+              if getattr(sys, 'frozen', False):
+                  base_dir = Path(sys.executable).resolve().parent
+              else:
+                  base_dir = Path(__file__).resolve().parent
               
-          cmd = [str(target_exe)] + sys.argv[1:]
-          sys.exit(subprocess.call(cmd))
+              target_exe = base_dir / "AssetBundlesEditorData" / "ABVME.exe"
+              
+              if not target_exe.exists():
+                  show_error(f"Cannot find application at:\\n{target_exe}")
+                  sys.exit(1)
+                  
+              cmd = [str(target_exe)] + sys.argv[1:]
+              subprocess.call(cmd, cwd=str(target_exe.parent))
+              
+          except Exception as e:
+              show_error(f"Critical Error:\\n{str(e)}")
+              sys.exit(1)
           """
           with open("launcher.py", "w", encoding="utf-8") as f:
               f.write(code)
 
-      # 2. Build ตัว Main (ABVME) - ไม่มี Icon ก็ได้เพราะซ่อนอยู่ข้างใน
+      # 2. Build ตัว Main (ABVME)
       - name: Build Main App (ABVME) 🏗️
         shell: cmd
         run: |
@@ -55,6 +64,7 @@ jobs:
             --standalone ^
             --enable-plugin=pyside6 ^
             --windows-console-mode=disable ^
+            --windows-icon-from-ico=assets/icon.ico ^
             --include-package=UnityPy.resources ^
             --include-package-data=UnityPy ^
             --include-package-data=archspec ^
@@ -65,7 +75,7 @@ jobs:
             --assume-yes-for-downloads ^
             app.py
 
-      # 3. Build Launcher - ใส่ Icon ที่นี่! (ต้องมีไฟล์ assets/icon.ico ใน repo)
+      # 3. Build Launcher
       - name: Build Launcher 🚀
         shell: cmd
         run: |
@@ -109,7 +119,7 @@ jobs:
             runner: ubuntu-latest
             zip_name: AssetBundlesEditor-Linux-x64.zip
           - arch: aarch64
-            runner: ubuntu-24.04-arm # ใช้ ARM Runner (ฟรีสำหรับ Public Repo)
+            runner: ubuntu-24.04-arm
             zip_name: AssetBundlesEditor-Linux-arm64.zip
 
     runs-on: ${{ matrix.runner }}
@@ -140,8 +150,11 @@ jobs:
           import subprocess, sys, os
           from pathlib import Path
           
-          # Linux: ไม่มี .exe และไม่มี .bin แล้ว
-          base_dir = Path(__file__).absolute().parent
+          if getattr(sys, 'frozen', False):
+              base_dir = Path(sys.executable).resolve().parent
+          else:
+              base_dir = Path(__file__).resolve().parent
+          
           target = base_dir / "AssetBundlesEditorData" / "ABVME"
           
           if not target.exists():
@@ -149,12 +162,12 @@ jobs:
               sys.exit(1)
               
           cmd = [str(target)] + sys.argv[1:]
-          sys.exit(subprocess.call(cmd))
+          sys.exit(subprocess.call(cmd, cwd=str(target.parent)))
           """
           with open("launcher.py", "w", encoding="utf-8") as f:
               f.write(code)
 
-      # 2. Build Main App (Linux) - เอา .bin ออกจากชื่อไฟล์ output
+      # 2. Build Main App (Linux)
       - name: Build Main App (ABVME) 🏗️
         run: |
           uv run python -m nuitka \
@@ -192,7 +205,7 @@ jobs:
           chmod +x FinalBuild/AssetBundlesEditor
           chmod +x FinalBuild/AssetBundlesEditorData/ABVME
 
-      - name: Zip Artifact 🤐
+      - name: Zip Artifact
         run: |
           cd FinalBuild
           zip -r ../${{ matrix.zip_name }} .
