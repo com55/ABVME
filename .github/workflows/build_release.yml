@@ -1,0 +1,204 @@
+name: Build and Release Multi-Platform
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  # ==================================================================================
+  # 1. WINDOWS BUILD (x64)
+  # ==================================================================================
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: uv sync --frozen
+
+      # 1. สร้าง Launcher Script (เรียก ABVME.exe จากโฟลเดอร์ข้างใน)
+      - name: Create Launcher Script 📝
+        shell: python
+        run: |
+          code = """
+          import subprocess, sys, os
+          from pathlib import Path
+          
+          # Path ไฟล์จริง: ./AssetBundlesEditorData/ABVME.exe
+          base_dir = Path(__file__).absolute().parent
+          target_exe = base_dir / "AssetBundlesEditorData" / "ABVME.exe"
+          
+          if not target_exe.exists():
+              # Fallback เผื่อหาไม่เจอ
+              print(f"Error: Cannot find application at {target_exe}")
+              input("Press Enter to exit...")
+              sys.exit(1)
+              
+          cmd = [str(target_exe)] + sys.argv[1:]
+          sys.exit(subprocess.call(cmd))
+          """
+          with open("launcher.py", "w", encoding="utf-8") as f:
+              f.write(code)
+
+      # 2. Build ตัว Main (ABVME) - ไม่มี Icon ก็ได้เพราะซ่อนอยู่ข้างใน
+      - name: Build Main App (ABVME) 🏗️
+        shell: cmd
+        run: |
+          uv run python -m nuitka ^
+            --standalone ^
+            --enable-plugin=pyside6 ^
+            --windows-console-mode=disable ^
+            --include-package=UnityPy.resources ^
+            --include-package-data=UnityPy ^
+            --include-package-data=archspec ^
+            --include-data-dir=assets=assets ^
+            --include-data-file=styles.qss=styles.qss ^
+            --output-dir=dist_main ^
+            --output-filename=ABVME.exe ^
+            --assume-yes-for-downloads ^
+            app.py
+
+      # 3. Build Launcher - ใส่ Icon ที่นี่! (ต้องมีไฟล์ assets/icon.ico ใน repo)
+      - name: Build Launcher 🚀
+        shell: cmd
+        run: |
+          uv run python -m nuitka ^
+            --onefile ^
+            --windows-console-mode=disable ^
+            --windows-icon-from-ico=assets/icon.ico ^
+            --output-dir=dist_launcher ^
+            --output-filename=AssetBundlesEditor.exe ^
+            --assume-yes-for-downloads ^
+            launcher.py
+
+      # 4. จัดระเบียบไฟล์
+      - name: Organize Files 📂
+        shell: pwsh
+        run: |
+          mkdir FinalBuild
+          # ย้าย Main ไปซ่อนในโฟลเดอร์ Data
+          Move-Item -Path "dist_main\ABVME.dist" -Destination "FinalBuild\AssetBundlesEditorData"
+          
+          # ย้าย Launcher มาไว้หน้าสุด
+          Move-Item -Path "dist_launcher\AssetBundlesEditor.exe" -Destination "FinalBuild\AssetBundlesEditor.exe"
+
+      - name: Zip Artifact 🤐
+        run: powershell Compress-Archive -Path "FinalBuild\*" -DestinationPath "AssetBundlesEditor-Windows-x64.zip"
+
+      - name: Upload Asset 📤
+        uses: softprops/action-gh-release@v2
+        with:
+          files: AssetBundlesEditor-Windows-x64.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==================================================================================
+  # 2. LINUX BUILD (x64 & arm64)
+  # ==================================================================================
+  build-linux:
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            zip_name: AssetBundlesEditor-Linux-x64.zip
+          - arch: aarch64
+            runner: ubuntu-24.04-arm # ใช้ ARM Runner (ฟรีสำหรับ Public Repo)
+            zip_name: AssetBundlesEditor-Linux-arm64.zip
+
+    runs-on: ${{ matrix.runner }}
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install System Deps (Linux) 🐧
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf libfuse2
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: uv sync --frozen
+
+      # 1. สร้าง Launcher Script (Linux Version)
+      - name: Create Launcher Script (Linux) 📝
+        shell: python
+        run: |
+          code = """
+          import subprocess, sys, os
+          from pathlib import Path
+          
+          # Linux: ไม่มี .exe และไม่มี .bin แล้ว
+          base_dir = Path(__file__).absolute().parent
+          target = base_dir / "AssetBundlesEditorData" / "ABVME"
+          
+          if not target.exists():
+              print(f"Error: Cannot find application at {target}")
+              sys.exit(1)
+              
+          cmd = [str(target)] + sys.argv[1:]
+          sys.exit(subprocess.call(cmd))
+          """
+          with open("launcher.py", "w", encoding="utf-8") as f:
+              f.write(code)
+
+      # 2. Build Main App (Linux) - เอา .bin ออกจากชื่อไฟล์ output
+      - name: Build Main App (ABVME) 🏗️
+        run: |
+          uv run python -m nuitka \
+            --standalone \
+            --enable-plugin=pyside6 \
+            --include-package=UnityPy.resources \
+            --include-package-data=UnityPy \
+            --include-package-data=archspec \
+            --include-data-dir=assets=assets \
+            --include-data-file=styles.qss=styles.qss \
+            --output-dir=dist_main \
+            --output-filename=ABVME \
+            --assume-yes-for-downloads \
+            app.py
+
+      # 3. Build Launcher (Linux)
+      - name: Build Launcher 🚀
+        run: |
+          uv run python -m nuitka \
+            --onefile \
+            --output-dir=dist_launcher \
+            --output-filename=AssetBundlesEditor \
+            --assume-yes-for-downloads \
+            launcher.py
+
+      # 4. จัดระเบียบไฟล์
+      - name: Organize Files 📂
+        run: |
+          mkdir FinalBuild
+          # ชื่อโฟลเดอร์ output ของ Nuitka จะเป็น {filename}.dist
+          mv dist_main/ABVME.dist FinalBuild/AssetBundlesEditorData
+          mv dist_launcher/AssetBundlesEditor FinalBuild/AssetBundlesEditor
+          
+          # ให้สิทธิ์ execute
+          chmod +x FinalBuild/AssetBundlesEditor
+          chmod +x FinalBuild/AssetBundlesEditorData/ABVME
+
+      - name: Zip Artifact 🤐
+        run: |
+          cd FinalBuild
+          zip -r ../${{ matrix.zip_name }} .
+
+      - name: Upload Asset 📤
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.zip_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
