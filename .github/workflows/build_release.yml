@@ -23,40 +23,7 @@ jobs:
       - name: Install Dependencies
         run: uv sync --frozen
 
-      # 1. สร้าง Launcher Script
-      - name: Create Launcher Script 📝
-        shell: python
-        run: |
-          code = """
-          import subprocess, sys, os, ctypes
-          from pathlib import Path
-          
-          def show_error(msg):
-              ctypes.windll.user32.MessageBoxW(0, msg, "Launcher Error", 0x10)
-
-          try:
-              if getattr(sys, 'frozen', False):
-                  base_dir = Path(sys.executable).resolve().parent
-              else:
-                  base_dir = Path(__file__).resolve().parent
-              
-              target_exe = base_dir / "AssetBundlesEditorData" / "ABVME.exe"
-              
-              if not target_exe.exists():
-                  show_error(f"Cannot find application at:\\n{target_exe}")
-                  sys.exit(1)
-                  
-              cmd = [str(target_exe)] + sys.argv[1:]
-              subprocess.call(cmd, cwd=str(target_exe.parent))
-              
-          except Exception as e:
-              show_error(f"Critical Error:\\n{str(e)}")
-              sys.exit(1)
-          """
-          with open("launcher.py", "w", encoding="utf-8") as f:
-              f.write(code)
-
-      # 2. Build ตัว Main (ABVME)
+      # Build Main App (Windows)
       - name: Build Main App (ABVME) 🏗️
         shell: cmd
         run: |
@@ -75,32 +42,15 @@ jobs:
             --assume-yes-for-downloads ^
             app.py
 
-      # 3. Build Launcher
-      - name: Build Launcher 🚀
-        shell: cmd
-        run: |
-          uv run python -m nuitka ^
-            --onefile ^
-            --windows-console-mode=disable ^
-            --windows-icon-from-ico=assets/icon.ico ^
-            --output-dir=dist_launcher ^
-            --output-filename=AssetBundlesEditor.exe ^
-            --assume-yes-for-downloads ^
-            launcher.py
-
-      # 4. จัดระเบียบไฟล์
       - name: Organize Files 📂
         shell: pwsh
         run: |
           mkdir FinalBuild
           # ย้าย Main ไปซ่อนในโฟลเดอร์ Data
-          Move-Item -Path "dist_main\app.dist" -Destination "FinalBuild\AssetBundlesEditorData"
-          
-          # ย้าย Launcher มาไว้หน้าสุด
-          Move-Item -Path "dist_launcher\AssetBundlesEditor.exe" -Destination "FinalBuild\AssetBundlesEditor.exe"
+          Move-Item -Path "dist_main\app.dist" -Destination "FinalBuild"
 
-      - name: Zip Artifact 🤐
-        run: powershell Compress-Archive -Path "FinalBuild\*" -DestinationPath "AssetBundlesEditor-Windows-x64.zip"
+      - name: Zip Artifact
+        run: powershell Compress-Archive -Path "FinalBuild\*" -DestinationPath "ABVME-Windows-x64.zip"
 
       - name: Upload Asset 📤
         uses: softprops/action-gh-release@v2
@@ -117,10 +67,10 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-latest
-            zip_name: AssetBundlesEditor-Linux-x64.zip
+            zip_name: ABVME-Linux-x64.zip
           - arch: aarch64
             runner: ubuntu-24.04-arm
-            zip_name: AssetBundlesEditor-Linux-arm64.zip
+            zip_name: ABVME-Linux-arm64.zip
 
     runs-on: ${{ matrix.runner }}
     
@@ -142,32 +92,7 @@ jobs:
       - name: Install Dependencies
         run: uv sync --frozen
 
-      # 1. สร้าง Launcher Script (Linux Version)
-      - name: Create Launcher Script (Linux) 📝
-        shell: python
-        run: |
-          code = """
-          import subprocess, sys, os
-          from pathlib import Path
-          
-          if getattr(sys, 'frozen', False):
-              base_dir = Path(sys.executable).resolve().parent
-          else:
-              base_dir = Path(__file__).resolve().parent
-          
-          target = base_dir / "AssetBundlesEditorData" / "ABVME"
-          
-          if not target.exists():
-              print(f"Error: Cannot find application at {target}")
-              sys.exit(1)
-              
-          cmd = [str(target)] + sys.argv[1:]
-          sys.exit(subprocess.call(cmd, cwd=str(target.parent)))
-          """
-          with open("launcher.py", "w", encoding="utf-8") as f:
-              f.write(code)
-
-      # 2. Build Main App (Linux)
+      # Build Main App (Linux)
       - name: Build Main App (ABVME) 🏗️
         run: |
           uv run python -m nuitka \
@@ -183,27 +108,13 @@ jobs:
             --assume-yes-for-downloads \
             app.py
 
-      # 3. Build Launcher (Linux)
-      - name: Build Launcher 🚀
-        run: |
-          uv run python -m nuitka \
-            --onefile \
-            --output-dir=dist_launcher \
-            --output-filename=AssetBundlesEditor \
-            --assume-yes-for-downloads \
-            launcher.py
-
-      # 4. จัดระเบียบไฟล์
       - name: Organize Files 📂
         run: |
           mkdir FinalBuild
-          # ชื่อโฟลเดอร์ output ของ Nuitka จะเป็น {filename}.dist
-          mv dist_main/app.dist FinalBuild/AssetBundlesEditorData
-          mv dist_launcher/AssetBundlesEditor FinalBuild/AssetBundlesEditor
+          mv dist_main/app.dist FinalBuild/
           
           # ให้สิทธิ์ execute
-          chmod +x FinalBuild/AssetBundlesEditor
-          chmod +x FinalBuild/AssetBundlesEditorData/ABVME
+          chmod +x FinalBuild/ABVME
 
       - name: Zip Artifact
         run: |
