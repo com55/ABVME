@@ -110,8 +110,7 @@ jobs:
 
       - name: Organize Files 📂
         run: |
-          mkdir FinalBuild
-          mv dist_main/app.dist FinalBuild/
+          mv dist_main/app.dist FinalBuild
           
           # ให้สิทธิ์ execute
           chmod +x FinalBuild/ABVME
