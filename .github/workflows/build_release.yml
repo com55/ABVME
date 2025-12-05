@@ -42,15 +42,8 @@ jobs:
             --assume-yes-for-downloads ^
             app.py
 
-      - name: Organize Files 📂
-        shell: pwsh
-        run: |
-          mkdir FinalBuild
-          # ย้าย Main ไปซ่อนในโฟลเดอร์ Data
-          Move-Item -Path "dist_main\app.dist" -Destination "FinalBuild"
-
-      - name: Zip Artifact
-        run: powershell Compress-Archive -Path "FinalBuild\*" -DestinationPath "ABVME-Windows-x64.zip"
+      - name: Zip Artifact 📦
+        run: powershell Compress-Archive -Path "dist_main\app.dist\*" -DestinationPath "ABVME-Windows-x64.zip"
 
       - name: Upload Asset 📤
         uses: softprops/action-gh-release@v2
@@ -110,14 +103,12 @@ jobs:
 
       - name: Organize Files 📂
         run: |
-          mv dist_main/app.dist FinalBuild
-          
-          # ให้สิทธิ์ execute
-          chmod +x FinalBuild/ABVME
+          # add execute permission
+          chmod +x dist_main/app.dist/ABVME
 
-      - name: Zip Artifact
+      - name: Zip Artifact 📦
         run: |
-          cd FinalBuild
+          cd dist_main/app.dist
           zip -r ../${{ matrix.zip_name }} .
 
       - name: Upload Asset 📤
