@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+  
 jobs:
   # ==================================================================================
   # 1. WINDOWS BUILD (x64)
@@ -109,7 +112,7 @@ jobs:
       - name: Zip Artifact 📦
         run: |
           cd dist_main/app.dist
-          zip -r ../${{ matrix.zip_name }} .
+          zip -r ../../${{ matrix.zip_name }} .
 
       - name: Upload Asset 📤
         uses: softprops/action-gh-release@v2
