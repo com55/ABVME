@@ -9,11 +9,11 @@ from typing import Optional, Literal, cast
 
 from PySide6.QtCore import QObject, Signal
 
-from models import AssetBundlesEditorCore, AssetInfo, EditResult, ExportResult
+from models import ABVMECore, AssetInfo, EditResult, ExportResult
 from services import LoaderWorker, EditWorker, SaveWorker
 
 
-log = logging.getLogger("AssetBundlesEditor")
+log = logging.getLogger("ABVME")
 
 
 class MainViewModel(QObject):
@@ -26,6 +26,7 @@ class MainViewModel(QObject):
     # Signals for data binding with View
     assets_loaded = Signal(list)  # List of AssetInfo
     loading_started = Signal(str)  # Status message
+    loading_progress = Signal(int, int, str)  # (current, total, filename) files loaded
     loading_finished = Signal(str)  # Status message
     
     edit_started = Signal(str)  # Status message
@@ -43,7 +44,7 @@ class MainViewModel(QObject):
     
     def __init__(self):
         super().__init__()
-        self.core: Optional[AssetBundlesEditorCore] = None
+        self.core: Optional[ABVMECore] = None
         self.assets: list[AssetInfo] = []
         self.selected_assets: list[AssetInfo] = []
         
@@ -59,17 +60,22 @@ class MainViewModel(QObject):
         Args:
             file_paths: List of file paths to load
         """
+        self.loading_started.emit("Loading bundle files...")
+        
         valid_files = [path for path in file_paths if Path(path).is_file()]
         if not valid_files:
             self.status_message.emit("No valid bundle files were provided.", logging.WARNING)
             return
-
-        self.loading_started.emit("Loading bundle files...")
         
         # Create worker thread
-        self.loader_worker = LoaderWorker(AssetBundlesEditorCore(), valid_files)
+        self.loader_worker = LoaderWorker(ABVMECore(), valid_files)
+        self.loader_worker.progress.connect(self._on_loading_progress)
         self.loader_worker.finished.connect(self._on_loading_complete)
         self.loader_worker.start()
+        
+    def _on_loading_progress(self, current: int, total: int, filename: str):
+        """Handle loading progress update"""
+        self.loading_progress.emit(current, total, filename)
         
     def _on_loading_complete(self, assets: list[AssetInfo]):
         """Handle loading completion"""
@@ -283,7 +289,7 @@ class MainViewModel(QObject):
                 return True
         return False
         
-    def save_all_files(self, output_dir: Path, packer: str = "original"):
+    def save_all_files(self, output_dir: Path, packer: Literal["none", "lz4", "lzma", "original"] = "none"):
         """
         Save all changed bundle files
         
@@ -303,18 +309,21 @@ class MainViewModel(QObject):
             self.status_message.emit("No changed files to save", logging.INFO)
             return False
 
-        # Cast packer to correct type
-        packer_typed = cast(Optional[Literal["lz4", "lzma", "original"]], packer if packer in ["lz4", "lzma", "original"] else "original")
-        
         self.save_started.emit("Saving all changed files...")
-        self.save_worker = SaveWorker(self.core, output_dir, packer_typed)
+        self.save_worker = SaveWorker(self.core, output_dir, packer)
         self.save_worker.progress.connect(self._on_save_progress)
         self.save_worker.finished.connect(self._on_save_finished)
         self.save_worker.error.connect(self._on_save_error)
         self.save_worker.start()
         return True
         
-    def save_selected_file(self, filepath: str, output_dir: Path, packer: str = "original", output_filename: Optional[str] = None):
+    def save_selected_file(
+        self, 
+        filepath: str, 
+        output_dir: Path, 
+        packer: Literal["none", "lz4", "lzma", "original"] = "none", 
+        output_filename: Optional[str] = None
+    ):
         """
         Save a specific bundle file
         
@@ -332,15 +341,49 @@ class MainViewModel(QObject):
             self.status_message.emit("Another save is currently running.", logging.WARNING)
             return False
 
-        # Cast packer to correct type
-        packer_typed = cast(Optional[Literal["lz4", "lzma", "original"]], packer if packer in ["lz4", "lzma", "original"] else "original")
-        
         # Use custom filename if provided, otherwise use original
         display_name = output_filename or Path(filepath).name
         self.save_started.emit(f"Saving {display_name}...")
         
         # Create SaveWorker with custom output filename
-        self.save_worker = SaveWorker(self.core, output_dir, packer_typed, filepath, output_filename)
+        self.save_worker = SaveWorker(self.core, output_dir, packer, filepath, output_filename)
+        self.save_worker.progress.connect(self._on_save_progress)
+        self.save_worker.finished.connect(self._on_save_finished)
+        self.save_worker.error.connect(self._on_save_error)
+        self.save_worker.start()
+        return True
+        
+    def save_multiple_files(
+        self, 
+        filepaths: list[str], 
+        output_dir: Path, 
+        packer: Literal["none", "lz4", "lzma", "original"] = "none"
+    ):
+        """
+        Save multiple selected bundle files
+        
+        Args:
+            filepaths: List of file paths to save
+            output_dir: Output directory path
+            packer: Compression method (none, lz4, lzma, or original)
+        """
+        if not self.core:
+            self.status_message.emit("No files loaded", logging.WARNING)
+            return False
+            
+        if self.save_worker and self.save_worker.isRunning():
+            self.status_message.emit("Another save is currently running.", logging.WARNING)
+            return False
+        
+        if not filepaths:
+            self.status_message.emit("No files selected", logging.INFO)
+            return False
+
+        
+        self.save_started.emit(f"Saving {len(filepaths)} selected file(s)...")
+        
+        # Create SaveWorker with specific_files list
+        self.save_worker = SaveWorker(self.core, output_dir, packer, specific_files=filepaths)
         self.save_worker.progress.connect(self._on_save_progress)
         self.save_worker.finished.connect(self._on_save_finished)
         self.save_worker.error.connect(self._on_save_error)

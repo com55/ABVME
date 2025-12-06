@@ -1,5 +1,5 @@
 [project]
-name = "AssetBundlesEditor"
+name = "ABVME"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -10,6 +10,3 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
-    "nuitka>=2.8.9",
-]

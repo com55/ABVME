@@ -7,7 +7,7 @@ from .asset_model import (
     ExportResult,
     AssetInfo,
 )
-from .core_model import AssetBundlesEditorCore
+from .core_model import ABVMECore
 
 __all__ = [
     "ResultStatus",
@@ -15,6 +15,6 @@ __all__ = [
     "EditResult",
     "ExportResult",
     "AssetInfo",
-    "AssetBundlesEditorCore",
+    "ABVMECore",
 ]
 

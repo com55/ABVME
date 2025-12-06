@@ -157,23 +157,83 @@ QMenu::item:selected {
     background-color: #094771;
 }
 
-/* QProgressBar {
-  margin: 2px 0 0;
-  background: #404040;
-  color: #dadada;
-  border-top: 1px solid #191919 ;
-  border-bottom: 1px solid #3c3c3c ;
-  border-left: 1px solid #1d1e20 ;
-  border-right: 1px solid #434343 ;
-  border-radius: 6px ;
-
-  text-align: center;
-  font: bold;
+/* --- ComboBox --- */
+QComboBox {
+    background-color: #3c3c3c;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    padding: 5px 10px;
+    color: #cccccc;
+    min-width: 100px;
 }
 
-QProgressBar::chunk {
-  background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                      stop:0 #3d9cc7, stop:0.1 #3a6dad, stop: 0.9 #3a6dad, stop:1 #101c3f);
-  border : 1px solid #111111;
-  border-radius: 6px ;
-} */
+QComboBox:hover {
+    border-color: #007acc;
+}
+
+QComboBox:focus {
+    border: 1px solid #007acc;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 20px;
+    border: none;
+}
+
+QComboBox::down-arrow {
+    image: url(assets/angle-down-solid.svg);
+    width: 18px;
+    height: 18px;
+    margin-right: 5px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #252526;
+    border: 1px solid #454545;
+    selection-background-color: #094771;
+    selection-color: white;
+    outline: 0;
+}
+
+QComboBox QAbstractItemView::item {
+    background-color: #252526;
+    color: #cccccc;
+    padding: 6px 10px;
+    min-height: 24px;
+}
+
+QComboBox QAbstractItemView::item:hover {
+    background-color: #3e3e42;
+    color: white;
+}
+
+QComboBox QAbstractItemView::item:selected {
+    background-color: #094771;
+    color: white;
+}
+
+/* --- List Widget --- */
+QListWidget {
+    background-color: #252526;
+    border: 1px solid #454545;
+    selection-background-color: #094771;
+    selection-color: white;
+    outline: 0;
+}
+
+QListWidget::item {
+    padding: 5px;
+    color: #cccccc;
+}
+
+QListWidget::item:hover {
+    background-color: #3e3e42;
+    color: white;
+}
+
+QListWidget::item:selected {
+    background-color: #094771;
+    color: white;
+}

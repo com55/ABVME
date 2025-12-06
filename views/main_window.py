@@ -5,6 +5,7 @@ Composes all UI components and wires them with ViewModel
 
 import logging
 from pathlib import Path
+from typing import Literal
 
 from PySide6.QtCore import QSize, Qt, QTimer, QEvent, Signal
 from PySide6.QtCore import QMimeData
@@ -23,10 +24,10 @@ from services import StatusBarHandler
 from models import AssetInfo
 
 
-log = logging.getLogger("AssetBundlesEditor")
+log = logging.getLogger("ABVME")
 
 
-class AssetBundlesEditorMainWindow(QMainWindow):
+class ABVMEMainWindow(QMainWindow):
     """
     Main application window
     Follows MVVM pattern - composes Views and binds them to ViewModel
@@ -37,7 +38,7 @@ class AssetBundlesEditorMainWindow(QMainWindow):
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Asset Bundles Editor")
+        self.setWindowTitle("ABVME")
         self.setMinimumSize(1000, 600)
         
         # Create ViewModel
@@ -70,7 +71,7 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         # Status timer for auto-clear
         self.status_timer = QTimer(self)
         self.status_timer.setSingleShot(True)
-        self.status_timer.timeout.connect(self.status_bar.clearMessage)
+        self.status_timer.timeout.connect(self._clear_status_bar)
         
     def _setup_logging(self):
         """Setup logging handler to forward logs to status bar"""
@@ -79,7 +80,7 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         
         # Setup handler
         self.status_handler = StatusBarHandler(self.log_signal)
-        logger = logging.getLogger("AssetBundlesEditor")
+        logger = logging.getLogger("ABVME")
         logger.addHandler(self.status_handler)
         
     def _setup_ui(self):
@@ -191,6 +192,7 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         """Connect ViewModel signals to View slots"""
         # Loading signals
         self.viewmodel.loading_started.connect(self._on_loading_started)
+        self.viewmodel.loading_progress.connect(self._on_loading_progress)
         self.viewmodel.loading_finished.connect(self._on_loading_finished)
         self.viewmodel.assets_loaded.connect(self._on_assets_loaded)
         
@@ -216,17 +218,28 @@ class AssetBundlesEditorMainWindow(QMainWindow):
     
     def _on_loading_started(self, message: str):
         """Handle loading started"""
-        self.load_button.setEnabled(False)
-        self.asset_table.set_sorting_enabled(False)
-        self.asset_table.clear_selection()
-        self.export_button.setEnabled(False)
-        self.edit_button.setEnabled(False)
+        self.setEnabled(False)
+        self.asset_table.clear_table()
         self.preview_panel.show_placeholder()
-        self._begin_background_task(message)
+        self._begin_background_task(message, show_progress=True)
+        
+    def _on_loading_progress(self, current: int, total: int, filename: str):
+        """Handle loading progress update"""
+        if total == 1:
+            self.progress_bar.setRange(0, 0)
+        else:
+            current -= 1
+            self.progress_bar.setRange(0, total)
+            self.progress_bar.setValue(current)
+            self.progress_bar.setFormat(f"{current}/{total}")
+            self.status_bar.showMessage(f"Loading: {filename}")
         
     def _on_loading_finished(self, message: str):
         """Handle loading finished"""
-        self.load_button.setEnabled(True)
+        self.setEnabled(True)
+        # Reset progress bar to busy indicator mode
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
         self._end_background_task(message)
         
     def _on_assets_loaded(self, assets: list[AssetInfo]):
@@ -262,7 +275,7 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         """Handle status message"""
         self.status_bar.showMessage(message)
         if level == logging.INFO:
-            self.status_timer.start(5000)
+            self.status_timer.start(10000)
             
     def _on_log_received(self, msg: str, level: int):
         """Handle log message received"""
@@ -270,27 +283,28 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         
     def _on_save_started(self, message: str):
         """Handle save operation started"""
-        self._begin_background_task(message)
+        self.setEnabled(False)
+        self._begin_background_task(message, show_progress=True)
         
     def _on_save_progress(self, current: int, total: int, filename: str):
         """Handle save progress update"""
-        if total > 1:
-            # Multiple files - show progress
-            message = f"Saving files: {current}/{total} - {filename}"
+        if total == 1:
+            self.progress_bar.setRange(0, 0)
         else:
-            # Single file
-            message = f"Saving {filename}..."
-        self.status_bar.showMessage(message)
+            current -= 1
+            self.progress_bar.setRange(0, total)
+            self.progress_bar.setValue(current)
+            self.progress_bar.setFormat(f"{current}/{total}")
+            self.status_bar.showMessage(f"Saving: {filename}")
         
     def _on_save_finished(self, success: bool, message: str):
         """Handle save operation completed"""
+        self.setEnabled(True)
         self._end_background_task(message)
         
-        # Notify dialog if it exists
+        # Close dialog if it exists
         if hasattr(self, '_save_dialog') and self._save_dialog:
-            # For save all, close dialog; for save selected, keep it open
-            is_save_all = "file(s)" in message.lower() or "all" in message.lower()
-            self._save_dialog.on_save_finished(success, message, close_dialog=is_save_all)
+            self._save_dialog.on_save_finished(success, message)
         
     # ===== UI Event Handlers =====
     
@@ -298,9 +312,9 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         """Handle load button click"""
         files, _ = QFileDialog.getOpenFileNames(
             self,
-            "Select Bundle Files",
-            str(Path.cwd() / "test"),
-            "Bundle Files (*.bundle);;All Files (*.*)"
+            "Select Asset Bundles",
+            str(Path.cwd()),
+            "Asset Bundles (*.bundle *.unity3d);;All Files (*.*)"
         )
         if files:
             self.viewmodel.load_files_from_paths(files)
@@ -334,13 +348,18 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         # Connect dialog signals
         dialog.save_all_requested.connect(self._handle_save_all)
         dialog.save_selected_requested.connect(self._handle_save_selected)
+        dialog.save_multiple_selected_requested.connect(self._handle_save_multiple_selected)
         
         # Store reference to update it later
         self._save_dialog = dialog
         
         dialog.exec()
         
-    def _handle_save_all(self, output_dir: str, packer: str):
+    def _handle_save_all(
+        self, 
+        output_dir: str, 
+        packer: Literal["none", "lz4", "lzma", "original"] = "none"
+    ):
         """Handle save all request from dialog"""
         from pathlib import Path
         
@@ -349,7 +368,12 @@ class AssetBundlesEditorMainWindow(QMainWindow):
             # Re-enable dialog if save didn't start
             self._save_dialog.setEnabled(True)
             
-    def _handle_save_selected(self, filepath: str, output_path: str, packer: str):
+    def _handle_save_selected(
+        self, 
+        filepath: str, 
+        output_path: str, 
+        packer: Literal["none", "lz4", "lzma", "original"] = "none"
+    ):
         """Handle save selected file request from dialog"""
         from pathlib import Path
         
@@ -359,6 +383,20 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         output_filename = output_path_obj.name
         
         success = self.viewmodel.save_selected_file(filepath, output_dir, packer, output_filename)
+        if not success and hasattr(self, '_save_dialog'):
+            # Re-enable dialog if save didn't start
+            self._save_dialog.setEnabled(True)
+            
+    def _handle_save_multiple_selected(
+        self, 
+        filepaths: list, 
+        output_dir: str, 
+        packer: Literal["none", "lz4", "lzma", "original"] = "none"
+    ):
+        """Handle save multiple selected files request from dialog"""
+        from pathlib import Path
+        
+        success = self.viewmodel.save_multiple_files(filepaths, Path(output_dir), packer)
         if not success and hasattr(self, '_save_dialog'):
             # Re-enable dialog if save didn't start
             self._save_dialog.setEnabled(True)
@@ -514,10 +552,21 @@ class AssetBundlesEditorMainWindow(QMainWindow):
         
     # ===== Helper Methods =====
     
-    def _begin_background_task(self, message: str):
-        """Begin background task (show progress indicator)"""
+    def _begin_background_task(self, message: str, show_progress: bool = False):
+        """Begin background task (show progress indicator)
+        
+        Args:
+            message: Status message to display
+            show_progress: If True, show progress bar with text (current/total format)
+        """
         self._active_background_tasks += 1
         self.progress_bar.setVisible(True)
+        if show_progress:
+            self.progress_bar.setTextVisible(True)
+            self.progress_bar.setFormat("0/0")
+        else:
+            self.progress_bar.setRange(0, 0)  # Busy indicator
+            self.progress_bar.setTextVisible(False)
         self.status_bar.showMessage(message)
 
     def _end_background_task(self, message: str | None = None):
@@ -529,7 +578,14 @@ class AssetBundlesEditorMainWindow(QMainWindow):
                 self.status_bar.showMessage(message)
         elif message:
             self.status_bar.showMessage(message)
-            
+    
+    def _clear_status_bar(self):
+        """Clear status bar"""
+        if self._active_background_tasks == 0:
+            self.status_bar.clearMessage()
+        else:
+            self.status_timer.start(10000)
+        
     def _refresh_preview(self):
         """Refresh current preview"""
         asset = self.viewmodel.get_single_selected_asset()

@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
 
 from viewmodels import MainViewModel
 
-
 class SaveDialog(QDialog):
     """
     Dialog for selecting files and compression mode for saving bundles
@@ -19,13 +18,14 @@ class SaveDialog(QDialog):
     # Signals
     save_all_requested = Signal(str, str)  # output_dir, packer
     save_selected_requested = Signal(str, str, str)  # filepath, output_path, packer
+    save_multiple_selected_requested = Signal(list, str, str)  # filepaths, output_dir, packer
     
     # Compression mode mapping
     COMPRESSION_MODES = {
-        "None": None,
+        "None": "none",
         "LZ4": "lz4",
         "LZMA": "lzma",
-        "Auto": "original"
+        "Original": "original"
     }
     
     def __init__(self, viewmodel: MainViewModel, parent=None):
@@ -37,7 +37,7 @@ class SaveDialog(QDialog):
         
     def _setup_ui(self):
         """Setup UI components"""
-        self.setWindowTitle("Save Bundle Files")
+        self.setWindowTitle("Save Asset Bundles")
         self.setModal(True)
         self.setMinimumSize(600, 300)
         
@@ -47,29 +47,30 @@ class SaveDialog(QDialog):
         # Left side: File list
         self.file_list = QListWidget()
         self.file_list.setAlternatingRowColors(True)
-        self.file_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.file_list.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+        self.file_list.setHorizontalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+        self.file_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.file_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.file_list.verticalScrollBar().setSingleStep(10)
+        self.file_list.horizontalScrollBar().setSingleStep(10)
+        self.file_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         main_layout.addWidget(self.file_list, stretch=3)
         
         # Right side: Controls
         controls_layout = QVBoxLayout()
         controls_layout.setSpacing(10)
+        controls_layout.setContentsMargins(5, 0, 0, 0)
         
         # Compression mode section
-        compression_label = QLabel("Compression mode")
+        compression_label = QLabel("Compression Method")
         controls_layout.addWidget(compression_label)
         
         self.compression_combo = QComboBox()
         self.compression_combo.addItems(list(self.COMPRESSION_MODES.keys()))
-        self.compression_combo.setCurrentText("Auto")
+        self.compression_combo.setCurrentText("Original")
         controls_layout.addWidget(self.compression_combo)
         
         controls_layout.addStretch()
-        
-        # Save All button
-        self.save_all_btn = QPushButton("Save All")
-        self.save_all_btn.setToolTip("Save all modified bundle files")
-        self.save_all_btn.clicked.connect(self._on_save_all_clicked)
-        controls_layout.addWidget(self.save_all_btn)
         
         # Save Selected button
         self.save_selected_btn = QPushButton("Save Selected")
@@ -77,6 +78,12 @@ class SaveDialog(QDialog):
         self.save_selected_btn.clicked.connect(self._on_save_selected_clicked)
         self.save_selected_btn.setEnabled(False)
         controls_layout.addWidget(self.save_selected_btn)
+        
+        # Save All button
+        self.save_all_btn = QPushButton("Save All Changed")
+        self.save_all_btn.setToolTip("Save all modified bundle files")
+        self.save_all_btn.clicked.connect(self._on_save_all_clicked)
+        controls_layout.addWidget(self.save_all_btn)
         
         main_layout.addLayout(controls_layout, stretch=1)
         
@@ -150,8 +157,7 @@ class SaveDialog(QDialog):
             
         packer = self._get_compression_mode()
         
-        # Disable dialog during save
-        self.setEnabled(False)
+        self.accept()
         
         # Emit signal
         self.save_all_requested.emit(str(self.output_dir), packer)
@@ -161,22 +167,30 @@ class SaveDialog(QDialog):
         selected_items = self.file_list.selectedItems()
         if not selected_items:
             return
+        
+        # Check if multiple files selected
+        if len(selected_items) > 1:
+            self._save_multiple_selected(selected_items)
+        else:
+            self._save_single_selected(selected_items[0])
             
+    def _save_single_selected(self, item: QListWidgetItem):
+        """Save a single selected file with Save As dialog"""
         # Get selected file info
-        filepath = selected_items[0].data(Qt.ItemDataRole.UserRole)
+        filepath = item.data(Qt.ItemDataRole.UserRole)
         filename = Path(filepath).name
         
         # Show Save As dialog
         if self.output_dir is None:
-            default_path = str(Path.cwd() / "output" / filename)
+            default_path = str(Path.cwd() / filename)
         else:
             default_path = str(self.output_dir / filename)
             
         save_path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save Bundle File",
+            "Save As...",
             default_path,
-            "Bundle Files (*.bundle);;All Files (*.*)"
+            "Asset Bundles (*.bundle *.unity3d);;All Files (*.*)"
         )
         
         if not save_path:
@@ -188,29 +202,37 @@ class SaveDialog(QDialog):
         
         packer = self._get_compression_mode()
         
-        # Disable dialog during save
-        self.setEnabled(False)
+        self.accept()
         
         # Emit signal with full output path
         self.save_selected_requested.emit(filepath, str(save_path), packer)
         
-    def on_save_finished(self, success: bool, message: str, close_dialog: bool = False):
+    def _save_multiple_selected(self, selected_items: list[QListWidgetItem]):
+        """Save multiple selected files to a directory"""
+        # Collect filepaths
+        filepaths = [item.data(Qt.ItemDataRole.UserRole) for item in selected_items]
+        
+        # Show directory selection dialog
+        if not self._select_output_directory():
+            return
+            
+        packer = self._get_compression_mode()
+        
+        self.accept()
+        
+        # Emit signal
+        self.save_multiple_selected_requested.emit(filepaths, str(self.output_dir), packer)
+        
+    def on_save_finished(self, success: bool, message: str):
         """
         Handle save completion
         
         Args:
             success: Whether save was successful
             message: Result message
-            close_dialog: Whether to close dialog after showing message
         """
-        # Re-enable dialog
-        self.setEnabled(True)
-        
-        # Show result message
         if success:
             QMessageBox.information(self, "Save Complete", message)
-            if close_dialog:
-                self.accept()  # Close dialog
         else:
             QMessageBox.critical(self, "Save Failed", message)
 

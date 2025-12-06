@@ -13,7 +13,7 @@ from views.components.photoviewer import PhotoViewer
 from models import AssetInfo, ResultStatus
 
 
-log = logging.getLogger("AssetBundlesEditor")
+log = logging.getLogger("ABVME")
 
 
 class PreviewPanelWidget(QWidget):
@@ -33,13 +33,13 @@ class PreviewPanelWidget(QWidget):
         
         # Create stacked widget for different preview types
         self.stack = QStackedWidget()
-        # self.stack.setStyleSheet(
-        #     "QStackedWidget {"
-        #     " border: 1px solid #616161;"
-        #     " border-radius: 4px;"
-        #     " background-color: #1f1f1f;"
-        #     "}"
-        # )
+        self.stack.setStyleSheet(
+            "QStackedWidget {"
+            " border: 1px solid #616161;"
+            " border-radius: 4px;"
+            " background-color: #1f1f1f;"
+            "}"
+        )
         
         # 1. Image Viewer (for Texture2D)
         self.image_viewer = PhotoViewer(self.stack)
