@@ -1,4 +1,4 @@
-# Source - https://stackoverflow.com/a
+# Source - https://stackoverflow.com/questions/35508711/how-to-enable-pan-and-zoom-in-a-qgraphicsview/35514531#35514531
 # Posted by ekhumoro, modified by community. See post 'Timeline' for change history
 # Retrieved 2025-11-18, License - CC BY-SA 4.0
 
@@ -6,7 +6,6 @@ from typing import Optional
 from PySide6 import QtCore, QtGui, QtWidgets
 
 SCALE_FACTOR = 1.25
-
 
 class PhotoViewer(QtWidgets.QGraphicsView):
     coordinatesChanged = QtCore.Signal(QtCore.QPoint)

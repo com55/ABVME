@@ -94,6 +94,12 @@ class AssetTableWidget(QWidget):
         """Enable or disable sorting"""
         self.table.setSortingEnabled(enabled)
         
+    def clear_table(self):
+        """Clear table"""
+        self.table.setRowCount(0)
+        self.table.clearSelection()
+        self.table.viewport().update()
+        
     def load_assets(self, assets: list[AssetInfo]):
         """
         Load assets into table

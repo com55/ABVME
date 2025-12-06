@@ -1,6 +1,6 @@
 """
 Application Entry Point
-Main application launcher for AssetBundlesEditor Asset Viewer
+Main application launcher for Asset Bundles Viewer Modifier and Exporter
 """
 
 import sys
@@ -10,7 +10,7 @@ import logging
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
-from views import AssetBundlesEditorMainWindow
+from views import ABVMEMainWindow
 from utilities import SingleInstance, get_resource_path
 
 
@@ -22,7 +22,7 @@ logging.basicConfig(
 )
 
 
-def bring_window_to_front(window: AssetBundlesEditorMainWindow):
+def bring_window_to_front(window: ABVMEMainWindow):
     """
     Bring existing window to front when another instance tries to start
     
@@ -46,8 +46,12 @@ def load_stylesheet(app: QApplication):
     """Load QSS stylesheet"""
     try:
         stylesheet_path = get_resource_path("styles.qss")
+        assets_path = get_resource_path("assets").as_posix()
+        
         with open(stylesheet_path, "r", encoding="utf-8") as f:
             style = f.read()
+            # Replace relative asset paths with absolute paths for exe compatibility
+            style = style.replace("url(assets/", f"url({assets_path}/")
             app.setStyleSheet(style)
     except Exception as e:
         logging.error(f"Could not load stylesheet: {e}")
@@ -67,7 +71,7 @@ def main():
         load_stylesheet(app)
 
     # Single instance check
-    single = SingleInstance("AssetBundlesEditorUI_Instance")
+    single = SingleInstance("ABVME_Instance")
 
     # If another instance is already running, don't start a new one
     if not single.start():
@@ -75,7 +79,7 @@ def main():
         return
 
     # Create and show main window
-    window = AssetBundlesEditorMainWindow()
+    window = ABVMEMainWindow()
     window.show()
 
     # Connect single instance signal to bring window to front

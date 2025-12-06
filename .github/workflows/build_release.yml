@@ -48,7 +48,7 @@ jobs:
       - name: Upload Asset 📤
         uses: softprops/action-gh-release@v2
         with:
-          files: AssetBundlesEditor-Windows-x64.zip
+          files: ABVME-Windows-x64.zip
           token: ${{ secrets.GITHUB_TOKEN }}
 
   # ==================================================================================

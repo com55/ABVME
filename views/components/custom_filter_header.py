@@ -2,8 +2,8 @@ from PySide6.QtWidgets import (
     QHeaderView, QMenu, QWidgetAction, QLineEdit, 
     QCheckBox, QWidget, QVBoxLayout, QLabel
 )
-from PySide6.QtGui import QIcon, QPainter, QAction, QPen, QColor, QFont, QPixmap
-from PySide6.QtCore import QPoint, Qt, Signal, QRect
+from PySide6.QtGui import QIcon, QPainter, QPen, QColor, QPixmap
+from PySide6.QtCore import QPoint, Qt, Signal
 
 class FilterHeader(QHeaderView):
     # Signal: col_index, filter_value
@@ -79,7 +79,7 @@ class FilterHeader(QHeaderView):
         # So I don't strictly need to draw text here if I set it in main_ui.py.
         # But let's leave this method clean.
 
-    def contextMenuEvent(self, event):
+    def contextMenuEvent(self, event):  # type: ignore[override]
         col = self.logicalIndexAt(event.pos())
         if col == -1: return
         # --- แก้ไข: คำนวณตำแหน่งมุมซ้ายล่างของ Header Section นั้น ---
@@ -100,15 +100,13 @@ class FilterHeader(QHeaderView):
         
         # สร้าง Label สวยๆ
         header_label = QLabel(f"Filter: {col_name}")
-        # header_label.setStyleSheet("""
-        #     QLabel {
-        #         font-weight: bold;
-        #         color: #444;
-        #         padding: 2px 5px;
-        #         background-color: #f0f0f0;
-        #         border: 1px solid #ccc;
-        #     }
-        # """)
+        header_label.setStyleSheet("""
+            QLabel {
+                font-weight: bold;
+                padding: 2px 5px;
+                border: 1px solid #323232;
+            }
+        """)
         header_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
         # ใส่ Label ลงใน Menu

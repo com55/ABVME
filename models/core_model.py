@@ -6,7 +6,7 @@ Contains core business logic for loading and managing Unity assets
 import time
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Callable, Optional
 
 from UnityPy import Environment
 from UnityPy.files import SerializedFile, BundleFile, WebFile
@@ -17,7 +17,7 @@ from .asset_model import AssetInfo
 
 
 # Configure logger
-log = logging.getLogger("AssetBundlesEditor")
+log = logging.getLogger("ABVME")
 
 # Available asset types for extraction
 available_assets = [
@@ -27,9 +27,9 @@ available_assets = [
 ]
 
 
-class AssetBundlesEditorCore:
+class ABVMECore:
     """
-    Core business logic for AssetBundlesEditor
+    Core business logic for ABVME
     Handles loading Unity bundle files and managing assets
     """
     
@@ -48,21 +48,31 @@ class AssetBundlesEditorCore:
                 self._source_paths.append({path: file})
             return self._source_paths
 
-    def load_files(self, file_list: list[str]) -> list[AssetInfo]:
+    def load_files(
+        self,
+        file_list: list[str],
+        progress_callback: Optional[Callable[[int, int, str], None]] = None
+    ) -> list[AssetInfo]:
         """
         Load Unity bundle files from file paths
         
         Args:
             file_list: List of file paths to load
+            progress_callback: Optional callback function(current, total, filename) for progress updates
             
         Returns:
             List of AssetInfo objects extracted from bundles
         """
         env = Environment()
         max_try = 100
-        log.info(f"Starting to load {len(file_list)} files...")
+        total_files = len(file_list)
+        log.info(f"Starting to load {total_files} files...")
         
-        for file in file_list:
+        for idx, file in enumerate(file_list, start=1):
+            # Emit progress before loading each file
+            if progress_callback:
+                progress_callback(idx, total_files, file)
+                
             start_time = time.time()
             with open(file, "rb") as f:
                 file_byte = f.read()
@@ -119,7 +129,7 @@ class AssetBundlesEditorCore:
     def save_all_changed_files(
         self,
         output_dir: str | Path,
-        packer: Literal["lz4", "lzma", "original"] | None = None
+        packer: Literal["lz4", "lzma", "original"] = "original"
     ):
         """
         Save all modified bundle files to output directory
@@ -128,26 +138,24 @@ class AssetBundlesEditorCore:
             output_dir: Output directory path
             packer: Compression method (lz4, lzma, or original)
         """
+        start_time = time.time()
         output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
-
-        effective_packer = packer or "original"
         saved = 0
 
         for file in self._env.files.values():
-            if not isinstance(file, EndianBinaryReader) and file.is_changed:
+            if not isinstance(file, EndianBinaryReader) and getattr(file, 'is_changed', False):
                 output_path = output_dir / file.name
-                self._save_fileobj(file, output_path, effective_packer)
+                self._save_fileobj(file, output_path, packer)
                 saved += 1
-                log.info(f"Saved {output_path}")
                 
-        log.info(f"Saved {saved} changed files to {output_dir}")
+        log.info(f"Took {time.time() - start_time:.2f} seconds to save {saved} changed files to {output_dir}")
 
     def save_file(
         self,
         file: str,
         output_path: str | Path,
-        packer: Literal["lz4", "lzma", "original"] | None = None
+        packer: Literal["none", "lz4", "lzma", "original"] = "none"
     ):
         """
         Save a specific bundle file to output path
@@ -155,7 +163,7 @@ class AssetBundlesEditorCore:
         Args:
             file: File name/path in loaded files
             output_path: Output file path
-            packer: Compression method (lz4, lzma, or original)
+            packer: Compression method (none, lz4, lzma, or original)
         """
         target_file = self._env.files.get(file)
         if not target_file:
@@ -164,14 +172,17 @@ class AssetBundlesEditorCore:
 
         if not isinstance(target_file, EndianBinaryReader):
             output_path = Path(output_path).resolve()
-            effective_packer = packer or "original"
-            self._save_fileobj(target_file, output_path, effective_packer)
-            log.info(f"Saved {output_path}")
+            self._save_fileobj(target_file, output_path, packer)
 
-    def _save_fileobj(self, file_obj, output_path: Path, packer: str):
+    def _save_fileobj(
+        self, 
+        file_obj: SerializedFile | BundleFile | WebFile, 
+        output_path: Path, 
+        packer: Literal["none", "lz4", "lzma", "original"] = "none"
+    ):
         """Internal helper to save file object to disk"""
+        start_time = time.time()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "wb") as f:
             f.write(file_obj.save(packer=packer))
-        log.info(f"Saved {output_path}")
-
+        log.info(f"Took {time.time() - start_time:.2f} seconds to save {output_path}")
