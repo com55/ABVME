@@ -37,13 +37,14 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
   - **TextAsset** - View, export, modify
   - **Texture2D** - View, export, replace
 
-## Roadmap
+## TODO
 - [ ] Mesh support
 - [ ] CRC Corrector - Make CRC32 the same as the original file after modification
 - [ ] Bundles Migration - Transfer modifications to new base files
 - [ ] Atlas Image Unpacker
 - [ ] [SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter) integration (add-on)
 - [ ] [SpineViewer](https://github.com/ww-rm/SpineViewer) to render preview file integration (add-on)
+- [ ] [BA-AD](https://github.com/Deathemonic/BA-AD) integration to find and download files when migrating to other platforms where they were not downloaded (add-on)
 
 ## Contributing
 - Found a bug or have a suggestion? Please [open an issue](https://github.com/com55/ABVME/issues)
