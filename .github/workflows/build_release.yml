@@ -60,11 +60,8 @@ jobs:
           } 
           # Manual
           else {
-            $timestamp = Get-Date -Format "ddMMyyyy-HHmm"
-            $artifactName = "ABVME-Windows-x64-$timestamp"
-            # 1. Rename directory inside dist_main
+            $artifactName = "ABVME-Windows-x64"
             Rename-Item -Path "dist_main\app.dist" -NewName $artifactName
-            # 2. Use the correct relative path for upload (dist_main/new_name)
             $artifactPath = "dist_main\$artifactName"
             echo "WINDOWS_ARTIFACT_NAME=$artifactName" >> $env:GITHUB_OUTPUT
             echo "WINDOWS_ARTIFACT_PATH=$artifactPath" >> $env:GITHUB_OUTPUT
@@ -145,8 +142,7 @@ jobs:
             zip -r ../../${{ matrix.zip_name }} .
           # Manual
           else
-            timestamp=$(date +%d%m%Y-%H%M)
-            artifactName="ABVME-Linux-${{ matrix.arch }}-$timestamp"
+            artifactName="ABVME-Linux-${{ matrix.arch }}"
             artifactPath="dist_main/$artifactName"
             mv dist_main/app.dist $artifactPath
             echo "LINUX_ARTIFACT_NAME=$artifactName" >> $GITHUB_OUTPUT
