@@ -19,40 +19,42 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
       - name: Install Dependencies
-        run: uv sync --frozen
+        run: uv export --no-hashes -o requirements.txt && pip install -r requirements.txt
 
       # Build Main App (Windows)
       - name: Build Main App (ABVME) 🏗️
-        shell: cmd
-        run: |
-          uv run python -m nuitka ^
-            --standalone ^
-            --enable-plugin=pyside6 ^
-            --windows-console-mode=disable ^
-            --windows-icon-from-ico=assets/icon.ico ^
-            --include-package=UnityPy.resources ^
-            --include-package-data=UnityPy ^
-            --include-package-data=archspec ^
-            --include-data-dir=assets=assets ^
-            --include-data-file=styles.qss=styles.qss ^
-            --output-dir=dist_main ^
-            --output-filename=ABVME.exe ^
-            --assume-yes-for-downloads ^
-            app.py
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          nuitka-version: main
+          script-name: app.py
+          mode: standalone
+          enable-plugins: pyside6
+          windows-console-mode: disable
+          windows-icon-from-ico: assets/icon.ico
+          include-package: UnityPy.resources
+          include-package-data: |
+            UnityPy
+            archspec
+          include-data-dir: assets=assets
+          include-data-files: styles.qss=styles.qss
+          output-dir: dist_main
+          output-file: ABVME.exe
 
       - name: Prepare Assets for Upload 📦
         shell: powershell
         id: win_prepare_assets
         run: |
-          $distPath = "dist_main\app.dist\*"
+          $distPath = "dist_main\*.dist\*"
           # Release
           if ("${{ github.ref }}" -like 'refs/tags/v*') {
             Compress-Archive -Path $distPath -DestinationPath "ABVME-Windows-x64.zip"
@@ -61,7 +63,8 @@ jobs:
           # Manual
           else {
             $artifactName = "ABVME-Windows-x64"
-            Rename-Item -Path "dist_main\app.dist" -NewName $artifactName
+            $distDir = Get-ChildItem -Path "dist_main" -Filter "*.dist" | Select-Object -First 1
+            Rename-Item -Path $distDir.FullName -NewName $artifactName
             $artifactPath = "dist_main\$artifactName"
             echo "WINDOWS_ARTIFACT_NAME=$artifactName" >> $env:GITHUB_OUTPUT
             echo "WINDOWS_ARTIFACT_PATH=$artifactPath" >> $env:GITHUB_OUTPUT
@@ -105,46 +108,49 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y patchelf libfuse2
 
-      - uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
       - name: Install Dependencies
-        run: uv sync --frozen
+        run: uv export --no-hashes -o requirements.txt && pip install -r requirements.txt
 
       # Build Main App (Linux)
       - name: Build Main App (ABVME) 🏗️
-        run: |
-          uv run python -m nuitka \
-            --standalone \
-            --enable-plugin=pyside6 \
-            --include-package=UnityPy.resources \
-            --include-package-data=UnityPy \
-            --include-package-data=archspec \
-            --include-data-dir=assets=assets \
-            --include-data-file=styles.qss=styles.qss \
-            --output-dir=dist_main \
-            --output-filename=ABVME \
-            --assume-yes-for-downloads \
-            app.py
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          nuitka-version: main
+          script-name: app.py
+          mode: standalone
+          enable-plugins: pyside6
+          include-package: UnityPy.resources
+          include-package-data: |
+            UnityPy
+            archspec
+          include-data-dir: assets=assets
+          include-data-files: styles.qss=styles.qss
+          output-dir: dist_main
+          output-file: ABVME
 
       - name: Prepare Assets for Upload 📦
         id: linux_prepare_assets
         run: |
-          chmod +x dist_main/app.dist/ABVME
+          distDir=$(find dist_main -maxdepth 1 -name "*.dist" -type d | head -1)
+          chmod +x "$distDir/ABVME"
           
           # Release
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            cd dist_main/app.dist
+            cd "$distDir"
             zip -r ../../${{ matrix.zip_name }} .
           # Manual
           else
             artifactName="ABVME-Linux-${{ matrix.arch }}"
             artifactPath="dist_main/$artifactName"
-            mv dist_main/app.dist $artifactPath
+            mv "$distDir" "$artifactPath"
             echo "LINUX_ARTIFACT_NAME=$artifactName" >> $GITHUB_OUTPUT
             echo "LINUX_ARTIFACT_PATH=$artifactPath" >> $GITHUB_OUTPUT
           fi
