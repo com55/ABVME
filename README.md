@@ -6,7 +6,7 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
 
 <details>
   <summary>Screenshot</summary>
-  <img src="image.png" width="100%">
+  <img src="assets/image.png" width="100%">
 </details>
 
 ## Usage
