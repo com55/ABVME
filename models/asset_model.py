@@ -159,7 +159,7 @@ class AssetInfo:
             try:
                 if isinstance(new_data, str):
                     if Path(new_data).exists():
-                        new_script_data = Path(new_data).read_text(encoding="utf-8", errors="surrogateescape")
+                        new_script_data = Path(new_data).read_bytes().decode("utf-8", errors="surrogateescape")
                     else:
                         new_script_data = new_data
                 elif isinstance(new_data, BinaryIO):
@@ -259,4 +259,5 @@ class AssetInfo:
                 status=ResultStatus.ERROR,
                 message=f"Export failed: {str(e)}"
             )
+
 
