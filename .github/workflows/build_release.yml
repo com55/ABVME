@@ -1,9 +1,12 @@
 name: Build and Release Multi-Platform
 
 on:
+  # 1. AUTO RELEASE TRIGGER
   push:
     tags:
       - 'v*'
+  # 2. MANUAL TRIGGER
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -45,10 +48,34 @@ jobs:
             --assume-yes-for-downloads ^
             app.py
 
-      - name: Zip Artifact 📦
-        run: powershell Compress-Archive -Path "dist_main\app.dist\*" -DestinationPath "ABVME-Windows-x64.zip"
+      - name: Prepare Assets for Upload 📦
+        shell: powershell
+        id: win_prepare_assets
+        run: |
+          $distPath = "dist_main\app.dist\*"
+          # Release
+          if ("${{ github.ref }}" -like 'refs/tags/v*') {
+            Compress-Archive -Path $distPath -DestinationPath "ABVME-Windows-x64.zip"
+            echo "WINDOWS_ARTIFACT_PATH=ABVME-Windows-x64.zip" >> $env:GITHUB_OUTPUT
+          } 
+          # Manual
+          else {
+            $artifactName = "ABVME-Windows-x64"
+            Rename-Item -Path "dist_main\app.dist" -NewName $artifactName
+            $artifactPath = "dist_main\$artifactName"
+            echo "WINDOWS_ARTIFACT_NAME=$artifactName" >> $env:GITHUB_OUTPUT
+            echo "WINDOWS_ARTIFACT_PATH=$artifactPath" >> $env:GITHUB_OUTPUT
+          }
 
-      - name: Upload Asset 📤
+      - name: Upload Artifact (Testing) 💾
+        uses: actions/upload-artifact@v4
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        with:
+          name: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_NAME }}
+          path: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_PATH }}
+
+      - name: Upload Release Asset (Windows) 📤
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: ABVME-Windows-x64.zip
@@ -104,17 +131,33 @@ jobs:
             --assume-yes-for-downloads \
             app.py
 
-      - name: Organize Files 📂
+      - name: Prepare Assets for Upload 📦
+        id: linux_prepare_assets
         run: |
-          # add execute permission
           chmod +x dist_main/app.dist/ABVME
+          
+          # Release
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            cd dist_main/app.dist
+            zip -r ../../${{ matrix.zip_name }} .
+          # Manual
+          else
+            artifactName="ABVME-Linux-${{ matrix.arch }}"
+            artifactPath="dist_main/$artifactName"
+            mv dist_main/app.dist $artifactPath
+            echo "LINUX_ARTIFACT_NAME=$artifactName" >> $GITHUB_OUTPUT
+            echo "LINUX_ARTIFACT_PATH=$artifactPath" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Zip Artifact 📦
-        run: |
-          cd dist_main/app.dist
-          zip -r ../../${{ matrix.zip_name }} .
+      - name: Upload Artifact (Testing) 💾
+        uses: actions/upload-artifact@v4
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        with:
+          name: ${{ steps.linux_prepare_assets.outputs.LINUX_ARTIFACT_NAME }}
+          path: ${{ steps.linux_prepare_assets.outputs.LINUX_ARTIFACT_PATH }}
 
-      - name: Upload Asset 📤
+      - name: Upload Release Asset (Linux) 📤
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.zip_name }}
