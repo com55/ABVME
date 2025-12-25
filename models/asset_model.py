@@ -6,7 +6,7 @@ Contains data structures and business logic for assets
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, BinaryIO, Optional, Union
+from typing import Any, BinaryIO, Optional
 
 from PIL import Image as PILImage
 from PIL.Image import Image
@@ -71,8 +71,8 @@ class AssetInfo:
     Encapsulates UnityPy ObjectReader with high-level operations
     """
     
-    def __init__(self, obj: ObjectReader, source_path: str = ""):
-        self._obj: ObjectReader = obj
+    def __init__(self, obj: ObjectReader[Any], source_path: str = ""):
+        self._obj: ObjectReader[Any] = obj
         self.name: str = self._obj.peek_name() or ""
         self.container: str = self._obj.container or ""
         self.path_id: str = str(self._obj.path_id) or ""
@@ -159,7 +159,7 @@ class AssetInfo:
             try:
                 if isinstance(new_data, str):
                     if Path(new_data).exists():
-                        new_script_data = Path(new_data).read_text(encoding="utf-8", errors="surrogateescape")
+                        new_script_data = Path(new_data).read_bytes().decode("utf-8", errors="surrogateescape")
                     else:
                         new_script_data = new_data
                 elif isinstance(new_data, BinaryIO):
