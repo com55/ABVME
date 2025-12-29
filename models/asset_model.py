@@ -5,6 +5,7 @@ Contains data structures and business logic for assets
 
 from dataclasses import dataclass
 from enum import Enum
+import json
 from pathlib import Path
 from typing import Any, BinaryIO, Optional
 
@@ -30,6 +31,7 @@ class PreviewResult:
     data: Image | str | None
     asset_type: str
     status: ResultStatus = ResultStatus.COMPLETE
+    parsed_data: str = ""
     message: str = ""
 
     @property
@@ -95,18 +97,33 @@ class AssetInfo:
         Returns appropriate data type based on asset type
         """
         data = self._get_readed_data()
-
-        if isinstance(data, Texture2D):
-            return PreviewResult(data=data.image, asset_type="Texture2D")
-        elif isinstance(data, TextAsset):
-            return PreviewResult(data=data.m_Script, asset_type="TextAsset")
-        elif isinstance(data, Mesh):
-            return PreviewResult(data=data.export(), asset_type="Mesh")
+        
+        # Custom default handler for non-serializable types
+        def json_default(obj: Any) -> str:
+            if isinstance(obj, bytes):
+                # Convert bytes to hex string or base64
+                try:
+                    return obj.decode('utf-8', errors="surrogateescape")
+                except UnicodeDecodeError:
+                    return obj.hex()  # or use base64.b64encode(obj).decode('ascii')
+            raise TypeError(f'Object of type {type(obj).__name__} is not JSON serializable')
+        
+        parsed_data = json.dumps(self._obj.parse_as_dict(), indent=4, default=json_default)
+        # from pprint import pprint
+        # pprint(parsed_data)
+        
+        if isinstance(data, Texture2D) and self.obj_type == ClassIDType.Texture2D:
+            return PreviewResult(data=data.image, asset_type="Texture2D", parsed_data=parsed_data)
+        elif isinstance(data, TextAsset) and self.obj_type == ClassIDType.TextAsset:
+            return PreviewResult(data=data.m_Script, asset_type="TextAsset", parsed_data=parsed_data)
+        elif isinstance(data, Mesh) and self.obj_type == ClassIDType.Mesh:
+            return PreviewResult(data=data.export(), asset_type="Mesh", parsed_data=parsed_data)
         else:
             return PreviewResult(
                 data=None, 
                 asset_type=type(data).__name__,
                 status=ResultStatus.UNSUPPORTED,
+                parsed_data=parsed_data,
                 message="Preview not available for this asset type"
             )
 

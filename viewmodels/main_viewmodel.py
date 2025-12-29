@@ -132,7 +132,7 @@ class MainViewModel(QObject):
         self.edit_worker.start()
         return True
         
-    def _on_edit_finished(self, asset_obj, result_obj):
+    def _on_edit_finished(self, asset_obj: object, result_obj: object) -> None:
         """Handle edit completion"""
         asset = asset_obj if isinstance(asset_obj, AssetInfo) else None
         result = result_obj if isinstance(result_obj, EditResult) else None

@@ -12,9 +12,7 @@ from PIL.Image import Image
 from views.components.photoviewer import PhotoViewer
 from models import AssetInfo, ResultStatus
 
-
 log = logging.getLogger("ABVME")
-
 
 class PreviewPanelWidget(QWidget):
     """
@@ -22,7 +20,7 @@ class PreviewPanelWidget(QWidget):
     Supports Image, Text, and Placeholder views
     """
     
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._setup_ui()
         
@@ -131,7 +129,7 @@ class PreviewPanelWidget(QWidget):
             log.error(f"Error generating preview: {e}", exc_info=True)
             self.show_placeholder(f"An unexpected error occurred during preview:\n{str(e)}")
             
-    def get_preview_widgets(self) -> set:
+    def get_preview_widgets(self) -> set[QWidget]:
         """Get set of widgets that can receive drops"""
         return {
             self.stack,
