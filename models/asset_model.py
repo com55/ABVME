@@ -123,7 +123,8 @@ class AssetInfo:
             next_pad = INDENT * (indent + 1)
             
             if isinstance(value, bytes):
-                return f'"{value.decode("utf-8", errors="surrogateescape")}"'
+                # return f'"{value.decode("utf-8", errors="surrogateescape")}"'
+                return f"<bytes data>"
             elif isinstance(value, str):
                 return f'"{value}"'
             elif isinstance(value, dict):
