@@ -16,6 +16,17 @@ from UnityPy.files import ObjectReader
 from UnityPy.enums import ClassIDType
 from UnityPy.tools.extractor import exportTextAsset, exportTexture2D, exportMesh
 
+AVAILABLE_ASSETS_FOR_EDIT = [
+    ClassIDType.Texture2D, 
+    ClassIDType.TextAsset, 
+    # ClassIDType.Mesh
+]
+
+AVAILABLE_ASSETS_FOR_EXPORT = [
+    ClassIDType.Texture2D, 
+    ClassIDType.TextAsset, 
+    # ClassIDType.Mesh,
+]
 
 class ResultStatus(str, Enum):
     """Status of operation results"""
@@ -81,7 +92,10 @@ class AssetInfo:
         self.obj_type: ClassIDType = self._obj.type
         self.source_path: str = source_path
         self.is_changed: bool = False
+        self.is_editable: bool = self.obj_type in AVAILABLE_ASSETS_FOR_EDIT
+        self.is_exportable: bool = self.obj_type in AVAILABLE_ASSETS_FOR_EXPORT
         self._readed_data = None
+        self._preview_data: Optional[PreviewResult] = None
 
     def _get_readed_data(self):
         """Lazy load and cache asset data"""
@@ -96,6 +110,9 @@ class AssetInfo:
         Generate preview data for the asset
         Returns appropriate data type based on asset type
         """
+        if self._preview_data:
+            return self._preview_data
+        
         data = self._get_readed_data()
         
         INDENT = "      "
@@ -126,19 +143,20 @@ class AssetInfo:
         parsed_data = fmt(self._obj.parse_as_dict())
         
         if isinstance(data, Texture2D) and self.obj_type == ClassIDType.Texture2D:
-            return PreviewResult(data=data.image, asset_type="Texture2D", parsed_data=parsed_data)
+            self._preview_data = PreviewResult(data=data.image, asset_type="Texture2D", parsed_data=parsed_data)
         elif isinstance(data, TextAsset) and self.obj_type == ClassIDType.TextAsset:
-            return PreviewResult(data=data.m_Script, asset_type="TextAsset", parsed_data=parsed_data)
+            self._preview_data = PreviewResult(data=data.m_Script, asset_type="TextAsset", parsed_data=parsed_data)
         elif isinstance(data, Mesh) and self.obj_type == ClassIDType.Mesh:
-            return PreviewResult(data=data.export(), asset_type="Mesh", parsed_data=parsed_data)
+            self._preview_data = PreviewResult(data=data.export(), asset_type="Mesh", parsed_data=parsed_data)
         else:
-            return PreviewResult(
+            self._preview_data = PreviewResult(
                 data=None, 
                 asset_type=self.obj_type.name,
                 status=ResultStatus.UNSUPPORTED,
                 parsed_data=parsed_data,
                 message="Preview not available for this asset type"
             )
+        return self._preview_data
 
     def edit_data(self, new_data: Image | str | BinaryIO) -> EditResult:
         """
@@ -146,7 +164,12 @@ class AssetInfo:
         Supports Texture2D and TextAsset editing
         """
         data = self._get_readed_data()
-        
+        if not self.is_editable:
+            return EditResult(
+                status=ResultStatus.UNSUPPORTED,
+                message=f"Editing not supported for {self.obj_type.name}"
+            )
+
         if isinstance(data, Texture2D):
             try:
                 image_data = None
@@ -172,7 +195,7 @@ class AssetInfo:
                 data.set_image(image_data)
                 data.save()
                 self.is_changed = True
-                return EditResult(
+                result = EditResult(
                     status=ResultStatus.COMPLETE, 
                     data=data.image,
                     message="Texture2D updated successfully."
@@ -195,7 +218,7 @@ class AssetInfo:
                 elif isinstance(new_data, BinaryIO):
                     new_script_data = new_data.read().decode("utf-8", errors="surrogateescape")
                 else:
-                    return EditResult(
+                    result = EditResult(
                         status=ResultStatus.ERROR, 
                         data=data.m_Script, 
                         error=ValueError("Unsupported data type"),
@@ -204,7 +227,7 @@ class AssetInfo:
                 data.m_Script = new_script_data
                 data.save()
                 self.is_changed = True
-                return EditResult(
+                result = EditResult(
                     status=ResultStatus.COMPLETE, 
                     data=data.m_Script,
                     message="TextAsset updated successfully."
@@ -227,6 +250,9 @@ class AssetInfo:
                 status=ResultStatus.UNSUPPORTED, 
                 message=f"Editing not supported for {type(data).__name__}"
             )
+        if result.is_success:
+            self._preview_data = None
+        return result
     
     def export(self, output_dir: str | Path, output_name: Optional[str] = None) -> ExportResult:
         """

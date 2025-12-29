@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-from PySide6.QtCore import QSize, Qt, QTimer, QEvent, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QTimer, QEvent, Signal
 from PySide6.QtCore import QMimeData
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
@@ -21,7 +21,7 @@ from views.asset_table_widget import AssetTableWidget
 from views.preview_panel_widget import PreviewPanelWidget
 from utilities import FileDropWidget, get_resource_str
 from services import StatusBarHandler
-from models import AssetInfo
+from models import AssetInfo, EditResult
 
 
 log = logging.getLogger("ABVME")
@@ -255,7 +255,7 @@ class ABVMEMainWindow(QMainWindow):
         """Handle edit started"""
         self._begin_background_task(message)
         
-    def _on_edit_finished(self, asset, result):
+    def _on_edit_finished(self, asset: AssetInfo, result: EditResult):
         """Handle edit finished"""
         self._end_background_task()
         if result and result.is_success and asset:
@@ -269,7 +269,13 @@ class ABVMEMainWindow(QMainWindow):
     def _on_selection_changed(self, count: int):
         """Handle selection changed"""
         self.export_button.setEnabled(count > 0)
-        self.edit_button.setEnabled(count == 1)
+        
+        # Enable edit button only if exactly one editable asset is selected
+        if count == 1:
+            asset = self.viewmodel.get_single_selected_asset()
+            self.edit_button.setEnabled(asset is not None and asset.is_editable)
+        else:
+            self.edit_button.setEnabled(False)
         
     def _on_status_message(self, message: str, level: int):
         """Handle status message"""
@@ -389,7 +395,7 @@ class ABVMEMainWindow(QMainWindow):
             
     def _handle_save_multiple_selected(
         self, 
-        filepaths: list, 
+        filepaths: list[str], 
         output_dir: str, 
         packer: Literal["none", "lz4", "lzma", "original"] = "none"
     ):
@@ -427,8 +433,28 @@ class ABVMEMainWindow(QMainWindow):
             
     def _on_export_button_clicked(self):
         """Handle export button click"""
+        if len(self.viewmodel.selected_assets) == 1:
+            asset = self.viewmodel.selected_assets[0]
+            if not asset.is_exportable:
+                self._on_status_message(
+                    f"Export not supported for {asset.obj_type.name}.", 
+                    logging.WARNING
+                )
+                QMessageBox.warning(
+                    self,
+                    "Export Not Supported",
+                    f"Export not supported for {asset.obj_type.name} currently.",
+                    QMessageBox.StandardButton.Ok
+                )
+                return
         if not self.viewmodel.selected_assets:
             self._on_status_message("Select assets to export.", logging.WARNING)
+            QMessageBox.information(
+                self,
+                "No Assets Selected",
+                "Select at least one asset to export.",
+                QMessageBox.StandardButton.Ok
+            )
             return
             
         if len(self.viewmodel.selected_assets) == 1:
@@ -444,14 +470,14 @@ class ABVMEMainWindow(QMainWindow):
         
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "Export Asset",
+            f"Export {asset.name}",
             str(suggested_path),
             "All Files (*.*)"
         )
         
         if file_path:
             self.viewmodel.export_single_asset(asset, Path(file_path))
-            
+
     def _export_multiple_assets(self):
         """Export multiple selected assets"""
         output_dir = QFileDialog.getExistingDirectory(
@@ -461,11 +487,20 @@ class ABVMEMainWindow(QMainWindow):
         )
         
         if output_dir:
-            self.viewmodel.export_multiple_assets(
+            success, total =self.viewmodel.export_multiple_assets(
                 self.viewmodel.selected_assets, 
                 Path(output_dir)
             )
-            
+            message = f"Successfully exported {success} asset(s)."
+            if success != total:
+                message += f"Failed to export {total - success} asset(s)."
+            QMessageBox.information(
+                self,
+                "Export Completed",
+                message,
+                QMessageBox.StandardButton.Ok
+            )
+
     # ===== Drag & Drop Handlers =====
     
     def _can_accept_preview_drop(self) -> bool:
@@ -502,7 +537,7 @@ class ABVMEMainWindow(QMainWindow):
             
         return self.viewmodel.edit_asset(asset, str(file_path))
         
-    def eventFilter(self, watched, event):
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         """Event filter for preview drop targets"""
         if watched in getattr(self, "_preview_drop_targets", []):
             event_type = event.type()
@@ -535,7 +570,7 @@ class ABVMEMainWindow(QMainWindow):
 
         return super().eventFilter(watched, event)
         
-    def _preview_can_accept_drop(self, event) -> bool:
+    def _preview_can_accept_drop(self, event: QEvent) -> bool:
         """Check if preview can accept specific drop event"""
         if not self._can_accept_preview_drop():
             return False

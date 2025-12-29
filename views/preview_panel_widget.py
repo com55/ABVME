@@ -95,8 +95,6 @@ class PreviewPanelWidget(QWidget):
         if not asset:
             self.show_placeholder("No asset selected")
             return
-            
-        log.info(f"Preparing preview for: {asset.name} ({asset.obj_type.name})")
 
         try:
             preview_result = asset.get_preview()
@@ -109,6 +107,7 @@ class PreviewPanelWidget(QWidget):
                     f"Preview failed for {asset.obj_type.name} (Status: {preview_result.status.value}):\n"
                     f"{preview_result.message}"
                 )
+                log.info(f"Preview failed for {asset.obj_type.name} (Status: {preview_result.status.value}): {preview_result.message}")
                 return
 
             if preview_result.asset_type == "Texture2D":
