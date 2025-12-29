@@ -82,6 +82,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ABVME-Windows-x64.zip
+          generate_release_notes: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
   # ==================================================================================
@@ -167,4 +168,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.zip_name }}
+          generate_release_notes: true
           token: ${{ secrets.GITHUB_TOKEN }}

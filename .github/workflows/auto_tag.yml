@@ -1,0 +1,53 @@
+name: Auto Tag from Version
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'pyproject.toml'
+
+permissions:
+  contents: write
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for tags
+
+      - name: Get Version from pyproject.toml 📋
+        id: get_version
+        run: |
+          VERSION=$(grep -oP '(?<=^version = ")[^"]+' pyproject.toml)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Found version: $VERSION"
+
+      - name: Check if Tag Exists 🔍
+        id: check
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          TAG_NAME="v$VERSION"
+          
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "⏭️ Tag $TAG_NAME already exists, skipping..."
+            echo "should_create=false" >> $GITHUB_OUTPUT
+          else
+            echo "✨ Tag $TAG_NAME does not exist, will create..."
+            echo "should_create=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create and Push Tag 🏷️
+        if: steps.check.outputs.should_create == 'true'
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          TAG_NAME="v$VERSION"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+          git push origin "$TAG_NAME"
+          echo "🚀 Created and pushed tag: $TAG_NAME"
+
