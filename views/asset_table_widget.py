@@ -78,7 +78,7 @@ class AssetTableWidget(QWidget):
     def get_selected_assets(self) -> list[AssetInfo]:
         """Get list of currently selected assets"""
         selected_rows = self.table.selectionModel().selectedRows()
-        assets = []
+        assets: list[AssetInfo] = []
         for index in selected_rows:
             item = self.table.item(index.row(), 0)
             asset = item.data(Qt.ItemDataRole.UserRole) if item else None
@@ -159,7 +159,7 @@ class AssetTableWidget(QWidget):
         
         # Adjust column widths
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.table.resizeColumnsToContents()
+        # self.table.resizeColumnsToContents()
         self.table.setSortingEnabled(True)
         
     def _apply_changed_style(self, row: int, asset: AssetInfo):

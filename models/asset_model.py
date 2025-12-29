@@ -85,7 +85,7 @@ class AssetInfo:
 
     def _get_readed_data(self):
         """Lazy load and cache asset data"""
-        if self._readed_data:
+        if self._readed_data: 
             return self._readed_data
         else:
             self._readed_data = self._obj.read()
@@ -98,19 +98,32 @@ class AssetInfo:
         """
         data = self._get_readed_data()
         
-        # Custom default handler for non-serializable types
-        def json_default(obj: Any) -> str:
-            if isinstance(obj, bytes):
-                # Convert bytes to hex string or base64
-                try:
-                    return obj.decode('utf-8', errors="surrogateescape")
-                except UnicodeDecodeError:
-                    return obj.hex()  # or use base64.b64encode(obj).decode('ascii')
-            raise TypeError(f'Object of type {type(obj).__name__} is not JSON serializable')
+        INDENT = "      "
         
-        parsed_data = json.dumps(self._obj.parse_as_dict(), indent=4, default=json_default)
-        # from pprint import pprint
-        # pprint(parsed_data)
+        def fmt(value: Any, indent: int = 0) -> str:
+            """Recursively format any value to readable string"""
+            pad = INDENT * indent
+            next_pad = INDENT * (indent + 1)
+            
+            if isinstance(value, bytes):
+                return f'"{value.decode("utf-8", errors="surrogateescape")}"'
+            elif isinstance(value, str):
+                return f'"{value}"'
+            elif isinstance(value, dict):
+                if not value:
+                    return "{}"
+                lines = [f"{next_pad}{k} = {fmt(v, indent + 1).lstrip()}" for k, v in value.items()]
+                return "{\n" + "\n".join(lines) + f"\n{pad}}}"
+            elif isinstance(value, (list, tuple)):
+                if not value:
+                    return "()" if isinstance(value, tuple) else "[]"
+                brackets = ("(", ")") if isinstance(value, tuple) else ("[", "]")
+                lines = [f"{next_pad}{fmt(item, indent + 1).lstrip()}" for item in value]
+                return f"{brackets[0]}\n" + "\n".join(lines) + f"\n{pad}{brackets[1]}"
+            else:
+                return str(value)
+        
+        parsed_data = fmt(self._obj.parse_as_dict())
         
         if isinstance(data, Texture2D) and self.obj_type == ClassIDType.Texture2D:
             return PreviewResult(data=data.image, asset_type="Texture2D", parsed_data=parsed_data)
@@ -121,7 +134,7 @@ class AssetInfo:
         else:
             return PreviewResult(
                 data=None, 
-                asset_type=type(data).__name__,
+                asset_type=self.obj_type.name,
                 status=ResultStatus.UNSUPPORTED,
                 parsed_data=parsed_data,
                 message="Preview not available for this asset type"
