@@ -5,7 +5,7 @@ Preview Panel Widget - View component for displaying asset previews
 import logging
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QStackedWidget, QTextEdit, QLabel
+    QWidget, QVBoxLayout, QStackedWidget, QTextEdit, QLabel, QTabWidget
 )
 from PIL.Image import Image
 
@@ -29,6 +29,11 @@ class PreviewPanelWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         
+        # Create tab widget as main container
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setTabPosition(QTabWidget.TabPosition.North)
+        
+        # ===== Tab 1: Preview =====
         # Create stacked widget for different preview types
         self.stack = QStackedWidget()
         self.stack.setStyleSheet(
@@ -45,13 +50,6 @@ class PreviewPanelWidget(QWidget):
         # 2. Text Editor (for TextAsset)
         self.text_editor = QTextEdit(self.stack)
         self.text_editor.setReadOnly(True)
-        # self.text_editor.setStyleSheet(
-        #     "QTextEdit { "
-        #     "font-family: 'Consolas', 'Monospace'; "
-        #     "font-size: 10pt; "
-        #     "font-weight: normal; "
-        #     "}"
-        # )
         
         # 3. Placeholder (for Mesh/Unsupported)
         self.placeholder = QLabel("Preview not available")
@@ -66,10 +64,24 @@ class PreviewPanelWidget(QWidget):
         # Initialize with placeholder
         self.stack.setCurrentIndex(self.placeholder_index)
         
-        layout.addWidget(self.stack)
+        # Add Preview tab
+        self.tab_widget.addTab(self.stack, "Preview")
+        
+        # ===== Tab 2: Dump (parsed_data JSON) =====
+        self.dump_editor = QTextEdit()
+        self.dump_editor.setReadOnly(True)
+        self.dump_editor.setPlaceholderText("Select an asset to view its parsed data.")
+        self.tab_widget.addTab(self.dump_editor, "Dump")
+        
+        layout.addWidget(self.tab_widget)
         
     def show_placeholder(self, message: str = "Select an asset from the list to view its preview."):
-        """Show placeholder with message"""
+        """Show placeholder with message and clear dump editor (for no asset selected)"""
+        self._show_preview_placeholder(message)
+        self.dump_editor.clear()
+        
+    def _show_preview_placeholder(self, message: str):
+        """Show placeholder in Preview tab only (keeps dump editor content)"""
         self.placeholder.setText(message)
         self.stack.setCurrentIndex(self.placeholder_index)
         
@@ -89,8 +101,11 @@ class PreviewPanelWidget(QWidget):
         try:
             preview_result = asset.get_preview()
             
+            # Always populate dump editor with parsed data
+            self.dump_editor.setText(preview_result.parsed_data)
+            
             if preview_result.status != ResultStatus.COMPLETE:
-                self.show_placeholder(
+                self._show_preview_placeholder(
                     f"Preview failed for {asset.obj_type.name} (Status: {preview_result.status.value}):\n"
                     f"{preview_result.message}"
                 )
@@ -103,7 +118,7 @@ class PreviewPanelWidget(QWidget):
                     self.stack.setCurrentIndex(self.image_index)
                     log.info(f"Showing Texture2D preview: {asset.name}")
                 else:
-                    self.show_placeholder("Texture2D data is empty.")
+                    self._show_preview_placeholder("Texture2D data is empty.")
 
             elif preview_result.asset_type == "TextAsset":
                 # Data is str
@@ -114,28 +129,30 @@ class PreviewPanelWidget(QWidget):
             elif preview_result.asset_type == "Mesh":
                 # Data is str (exported OBJ data)
                 text_data = preview_result.data if preview_result.data else "No Mesh data available."
-                self.show_placeholder(
+                self._show_preview_placeholder(
                     f"Mesh preview (Unsupported):\n"
                     f"Raw OBJ data snippet:\n{str(text_data)[:500]}..."
                 )
                 log.warning(f"Mesh preview unsupported: {asset.name}")
 
             else:
-                self.show_placeholder(
+                self._show_preview_placeholder(
                     f"Preview not supported for type: {preview_result.asset_type}"
                 )
 
         except Exception as e:
             log.error(f"Error generating preview: {e}", exc_info=True)
-            self.show_placeholder(f"An unexpected error occurred during preview:\n{str(e)}")
+            self._show_preview_placeholder(f"An unexpected error occurred during preview:\n{str(e)}")
             
     def get_preview_widgets(self) -> set[QWidget]:
         """Get set of widgets that can receive drops"""
         return {
+            self.tab_widget,
             self.stack,
             self.image_viewer,
             self.image_viewer.viewport(),
             self.text_editor,
             self.placeholder,
+            self.dump_editor,
         }
 
