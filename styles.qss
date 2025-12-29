@@ -61,7 +61,7 @@ QTableWidget, QListWidget {
 
 /* เอฟเฟคตอนเอาเมาส์ชี้ (Hover) */
 QTableWidget::item:hover, QListWidget::item:hover {
-    background-color: #3e3e42; /* สีเทาที่สว่างขึ้นมาหน่อย */
+    /* background-color: #3e3e42; */
     color: white;
 }
 
@@ -71,9 +71,15 @@ QTableWidget::item, QListWidget::item {
     padding: 1px; /* เพิ่มระยะห่างให้ดูไม่อึดอัด */
 }
 
+QTableWidget::item:selected, QListWidget::item:selected {
+    background-color: #094771;
+    color: white;
+}
+
 /* ตอนเลือกแล้วเอาเมาส์ชี้ซ้ำ (Selected + Hover) */
 QTableWidget::item:selected:hover, QListWidget::item:selected:hover {
-    background-color: #0a568c; /* สีฟ้าเข้มขึ้นอีกนิด */
+    background-color: #094771;
+    color: #cccccc;
 }
 
 QHeaderView::section {

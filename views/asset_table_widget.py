@@ -20,7 +20,7 @@ class AssetTableWidget(QWidget):
     selection_changed = Signal(list)  # List of selected AssetInfo objects
     filter_changed = Signal()
     
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._setup_ui()
         self._connect_signals()
@@ -52,7 +52,7 @@ class AssetTableWidget(QWidget):
         self.table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.table.verticalScrollBar().setSingleStep(10)
-        self.table.horizontalScrollBar().setSingleStep(10)
+        self.table.horizontalScrollBar().setSingleStep(20)
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         # self.table.setStyleSheet("QTableWidget::item { padding-top: 5px; padding-bottom: 5px; }")
         self.table.setAlternatingRowColors(True)

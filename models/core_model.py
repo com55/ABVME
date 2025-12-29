@@ -11,21 +11,12 @@ from typing import Literal, Callable, Optional
 from UnityPy import Environment
 from UnityPy.files import SerializedFile, BundleFile, WebFile
 from UnityPy.streams.EndianBinaryReader import EndianBinaryReader
-from UnityPy.enums import ClassIDType
 
 from .asset_model import AssetInfo
 
 
 # Configure logger
 log = logging.getLogger("ABVME")
-
-# Available asset types for extraction
-available_assets = [
-    ClassIDType.Texture2D, 
-    ClassIDType.TextAsset, 
-    # ClassIDType.Mesh
-]
-
 
 class ABVMECore:
     """
@@ -114,15 +105,14 @@ class ABVMECore:
         
         if not assets:
             for obj in self._env.objects:
-                if obj.type in available_assets:
-                    # Find source path
-                    source_path = ""
-                    target = obj.assets_file
-                    if target in bundle_file_dict:
-                        source_path = bundle_file_dict[target]
-                    elif hasattr(target, "parent") and target.parent in bundle_file_dict:
-                        source_path = bundle_file_dict[target.parent]
-                    assets.append(AssetInfo(obj, source_path))
+                # Find source path
+                source_path = ""
+                target = obj.assets_file
+                if target in bundle_file_dict:
+                    source_path = bundle_file_dict[target]
+                elif hasattr(target, "parent") and target.parent in bundle_file_dict:
+                    source_path = bundle_file_dict[target.parent]
+                assets.append(AssetInfo(obj, source_path))
                     
         return assets
 
