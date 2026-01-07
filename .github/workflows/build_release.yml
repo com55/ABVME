@@ -1,15 +1,26 @@
 name: Build and Release Multi-Platform
 
 on:
-  # 1. AUTO RELEASE TRIGGER
+  # 1. AUTO RELEASE TRIGGER (from auto_tag.yml)
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
+  # 2. MANUAL TRIGGER (with tag push)
   push:
     tags:
       - 'v*'
-  # 2. MANUAL TRIGGER
+  # 3. MANUAL TRIGGER (workflow_dispatch)
   workflow_dispatch:
 
 permissions:
   contents: write
+
+env:
+  # Determine if this is a release (from workflow_call OR tag push)
+  IS_RELEASE: ${{ inputs.tag_name != '' || startsWith(github.ref, 'refs/tags/v') }}
+  TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
   
 jobs:
   # ==================================================================================
@@ -19,6 +30,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name || github.ref }}
 
       - uses: actions/setup-python@v5
         with:
@@ -55,12 +68,12 @@ jobs:
         id: win_prepare_assets
         run: |
           $distPath = "dist_main\*.dist\*"
-          # Release
-          if ("${{ github.ref }}" -like 'refs/tags/v*') {
+          # Release (from workflow_call or tag push)
+          if ("${{ env.IS_RELEASE }}" -eq 'true') {
             Compress-Archive -Path $distPath -DestinationPath "ABVME-Windows-x64.zip"
             echo "WINDOWS_ARTIFACT_PATH=ABVME-Windows-x64.zip" >> $env:GITHUB_OUTPUT
           } 
-          # Manual
+          # Manual (workflow_dispatch)
           else {
             $artifactName = "ABVME-Windows-x64"
             $distDir = Get-ChildItem -Path "dist_main" -Filter "*.dist" | Select-Object -First 1
@@ -72,15 +85,16 @@ jobs:
 
       - name: Upload Artifact (Testing) 💾
         uses: actions/upload-artifact@v4
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ env.IS_RELEASE != 'true' }}
         with:
           name: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_NAME }}
           path: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_PATH }}
 
       - name: Upload Release Asset (Windows) 📤
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG_NAME }}
           files: ABVME-Windows-x64.zip
           generate_release_notes: true
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -103,6 +117,8 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name || github.ref }}
 
       - name: Install System Deps (Linux) 🐧
         run: |
@@ -143,11 +159,11 @@ jobs:
           distDir=$(find dist_main -maxdepth 1 -name "*.dist" -type d | head -1)
           chmod +x "$distDir/ABVME"
           
-          # Release
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          # Release (from workflow_call or tag push)
+          if [[ "${{ env.IS_RELEASE }}" == "true" ]]; then
             cd "$distDir"
             zip -r ../../${{ matrix.zip_name }} .
-          # Manual
+          # Manual (workflow_dispatch)
           else
             artifactName="ABVME-Linux-${{ matrix.arch }}"
             artifactPath="dist_main/$artifactName"
@@ -158,15 +174,16 @@ jobs:
 
       - name: Upload Artifact (Testing) 💾
         uses: actions/upload-artifact@v4
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ env.IS_RELEASE != 'true' }}
         with:
           name: ${{ steps.linux_prepare_assets.outputs.LINUX_ARTIFACT_NAME }}
           path: ${{ steps.linux_prepare_assets.outputs.LINUX_ARTIFACT_PATH }}
 
       - name: Upload Release Asset (Linux) 📤
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ env.IS_RELEASE == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG_NAME }}
           files: ${{ matrix.zip_name }}
           generate_release_notes: true
           token: ${{ secrets.GITHUB_TOKEN }}
