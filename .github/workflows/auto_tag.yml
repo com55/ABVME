@@ -41,6 +41,7 @@ jobs:
 
       - name: Create and Push Tag 🏷️
         if: steps.check.outputs.should_create == 'true'
+        id: create_tag
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           TAG_NAME="v$VERSION"
@@ -50,4 +51,17 @@ jobs:
           git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
           git push origin "$TAG_NAME"
           echo "🚀 Created and pushed tag: $TAG_NAME"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+
+    outputs:
+      should_build: ${{ steps.check.outputs.should_create }}
+      tag_name: ${{ steps.create_tag.outputs.tag_name }}
+
+  # Trigger build and release after tag is created
+  build-release:
+    needs: create-tag
+    if: needs.create-tag.outputs.should_build == 'true'
+    uses: ./.github/workflows/build_release.yml
+    with:
+      tag_name: ${{ needs.create-tag.outputs.tag_name }}
 
