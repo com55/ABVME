@@ -1,0 +1,136 @@
+.asset-table {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-panel);
+}
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.filter-input {
+  flex: 1;
+  height: 26px;
+  font-size: 12px;
+}
+
+.count-badge {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.table-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-base);
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.col-head {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 2px;
+  user-select: none;
+}
+.col-head:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.col-head.sorted {
+  color: var(--accent);
+}
+
+.sort-arrow {
+  font-size: 10px;
+}
+
+.col-check {
+  width: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.table-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.table-row {
+  display: flex;
+  align-items: center;
+  padding: 3px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  min-height: 26px;
+}
+.table-row:hover {
+  background: var(--bg-hover);
+}
+.table-row.selected {
+  background: var(--bg-selected);
+}
+.table-row.selected:hover {
+  background: #0d5a8a;
+}
+.table-row.changed .cell:first-of-type {
+  color: var(--changed);
+}
+.table-row:nth-child(even) {
+  background: var(--bg-row-alt);
+}
+.table-row:nth-child(even).selected {
+  background: var(--bg-selected);
+}
+.table-row:nth-child(even):hover {
+  background: var(--bg-hover);
+}
+
+.cell {
+  padding: 0 4px;
+  font-size: 12px;
+}
+.cell.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cell.dim {
+  color: var(--text-dim);
+}
+.cell.type-badge {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.changed-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--changed);
+  border-radius: 50%;
+  margin-right: 5px;
+  flex-shrink: 0;
+}
+
+.empty-message {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}

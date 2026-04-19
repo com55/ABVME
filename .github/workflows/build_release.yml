@@ -18,10 +18,9 @@ permissions:
   contents: write
 
 env:
-  # Determine if this is a release (from workflow_call OR tag push)
   IS_RELEASE: ${{ inputs.tag_name != '' || startsWith(github.ref, 'refs/tags/v') }}
   TAG_NAME: ${{ inputs.tag_name || github.ref_name }}
-  
+
 jobs:
   # ==================================================================================
   # 1. WINDOWS BUILD (x64)
@@ -33,6 +32,7 @@ jobs:
         with:
           ref: ${{ inputs.tag_name || github.ref }}
 
+      # ── Python backend binary ──────────────────────────────────────────────────
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -41,63 +41,74 @@ jobs:
         with:
           version: "latest"
 
-      - name: Install Dependencies
+      - name: Install Python Dependencies
         run: uv export --no-hashes -o requirements.txt && pip install -r requirements.txt
 
-      # Build Main App (Windows)
-      - name: Build Main App (ABVME) 🏗️
+      - name: Build Python Backend (Windows x64) 🐍
         uses: Nuitka/Nuitka-Action@main
         with:
           nuitka-version: main
-          script-name: app.py
+          script-name: backend.py
           mode: standalone
-          enable-plugins: pyside6
           windows-console-mode: disable
-          windows-icon-from-ico: assets/icon.ico
           include-package: UnityPy.resources
           include-package-data: |
             UnityPy
             archspec
-          include-data-dir: assets=assets
-          include-data-files: styles.qss=styles.qss
-          output-dir: dist_main
-          output-file: ABVME.exe
+          output-dir: dist_backend
+          output-file: abvme-server.exe
 
-      - name: Prepare Assets for Upload 📦
+      - name: Stage sidecar binary (Windows) 📦
         shell: powershell
-        id: win_prepare_assets
         run: |
-          $distPath = "dist_main\*.dist\*"
-          # Release (from workflow_call or tag push)
-          if ("${{ env.IS_RELEASE }}" -eq 'true') {
-            Compress-Archive -Path $distPath -DestinationPath "ABVME-Windows-x64.zip"
-            echo "WINDOWS_ARTIFACT_PATH=ABVME-Windows-x64.zip" >> $env:GITHUB_OUTPUT
-          } 
-          # Manual (workflow_dispatch)
-          else {
-            $artifactName = "ABVME-Windows-x64"
-            $distDir = Get-ChildItem -Path "dist_main" -Filter "*.dist" | Select-Object -First 1
-            Rename-Item -Path $distDir.FullName -NewName $artifactName
-            $artifactPath = "dist_main\$artifactName"
-            echo "WINDOWS_ARTIFACT_NAME=$artifactName" >> $env:GITHUB_OUTPUT
-            echo "WINDOWS_ARTIFACT_PATH=$artifactPath" >> $env:GITHUB_OUTPUT
-          }
+          $distDir = Get-ChildItem -Path "dist_backend" -Filter "*.dist" | Select-Object -First 1
+          $target = "x86_64-pc-windows-msvc"
+          New-Item -ItemType Directory -Force -Path "src-tauri\binaries"
+          # Copy the entire dist folder contents to a temp dir, then zip later with Tauri
+          Copy-Item "$($distDir.FullName)\*" "src-tauri\binaries\abvme-server-$target" -Recurse -Force
+          # Tauri expects a single executable for externalBin; rename the .exe
+          Move-Item "src-tauri\binaries\abvme-server-$target\abvme-server.exe" `
+                    "src-tauri\binaries\abvme-server-$target.exe"
 
-      - name: Upload Artifact (Testing) 💾
-        uses: actions/upload-artifact@v4
-        if: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_NAME != '' }}
+      # ── Node / Tauri frontend ──────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
         with:
-          name: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_NAME }}
-          path: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_PATH }}
+          node-version: '22'
 
-      - name: Upload Release Asset (Windows) 📤
+      - name: Install Node Dependencies
+        run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build Tauri App (Windows) 🏗️
+        run: npm run tauri build -- --bundles nsis,msi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Upload Windows Installers 📤
         if: ${{ env.IS_RELEASE == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
-          files: ABVME-Windows-x64.zip
+          files: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
           generate_release_notes: true
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifact (Testing)
+        if: ${{ env.IS_RELEASE != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ABVME-Windows-x64-installers
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
 
   # ==================================================================================
   # 2. LINUX BUILD (x64 & arm64)
@@ -107,24 +118,32 @@ jobs:
       matrix:
         include:
           - arch: x86_64
-            runner: ubuntu-latest
-            zip_name: ABVME-Linux-x64.zip
+            runner: ubuntu-22.04
+            rust_target: x86_64-unknown-linux-gnu
+            tauri_target: x86_64-unknown-linux-gnu
           - arch: aarch64
             runner: ubuntu-24.04-arm
-            zip_name: ABVME-Linux-arm64.zip
+            rust_target: aarch64-unknown-linux-gnu
+            tauri_target: aarch64-unknown-linux-gnu
 
     runs-on: ${{ matrix.runner }}
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag_name || github.ref }}
 
-      - name: Install System Deps (Linux) 🐧
+      # ── System dependencies ────────────────────────────────────────────────────
+      - name: Install System Dependencies (Linux) 🐧
         run: |
           sudo apt-get update
-          sudo apt-get install -y patchelf libfuse2
+          sudo apt-get install -y \
+            patchelf libfuse2 \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev libssl-dev \
+            libayatana-appindicator3-dev
 
+      # ── Python backend binary ──────────────────────────────────────────────────
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -133,57 +152,71 @@ jobs:
         with:
           version: "latest"
 
-      - name: Install Dependencies
+      - name: Install Python Dependencies
         run: uv export --no-hashes -o requirements.txt && pip install -r requirements.txt
 
-      # Build Main App (Linux)
-      - name: Build Main App (ABVME) 🏗️
+      - name: Build Python Backend (Linux) 🐍
         uses: Nuitka/Nuitka-Action@main
         with:
           nuitka-version: main
-          script-name: app.py
+          script-name: backend.py
           mode: standalone
-          enable-plugins: pyside6
           include-package: UnityPy.resources
           include-package-data: |
             UnityPy
             archspec
-          include-data-dir: assets=assets
-          include-data-files: styles.qss=styles.qss
-          output-dir: dist_main
-          output-file: ABVME
+          output-dir: dist_backend
+          output-file: abvme-server
 
-      - name: Prepare Assets for Upload 📦
-        id: linux_prepare_assets
+      - name: Stage sidecar binary (Linux) 📦
         run: |
-          distDir=$(find dist_main -maxdepth 1 -name "*.dist" -type d | head -1)
-          chmod +x "$distDir/ABVME"
-          
-          # Release (from workflow_call or tag push)
-          if [[ "${{ env.IS_RELEASE }}" == "true" ]]; then
-            cd "$distDir"
-            zip -r ../../${{ matrix.zip_name }} .
-          # Manual (workflow_dispatch)
-          else
-            artifactName="ABVME-Linux-${{ matrix.arch }}"
-            artifactPath="dist_main/$artifactName"
-            mv "$distDir" "$artifactPath"
-            echo "LINUX_ARTIFACT_NAME=$artifactName" >> $GITHUB_OUTPUT
-            echo "LINUX_ARTIFACT_PATH=$artifactPath" >> $GITHUB_OUTPUT
-          fi
+          distDir=$(find dist_backend -maxdepth 1 -name "*.dist" -type d | head -1)
+          mkdir -p src-tauri/binaries
+          # Copy entire dist as support files directory
+          cp -r "$distDir" "src-tauri/binaries/abvme-server-${{ matrix.rust_target }}-support"
+          # Move the main executable to the expected sidecar path
+          mv "src-tauri/binaries/abvme-server-${{ matrix.rust_target }}-support/abvme-server" \
+             "src-tauri/binaries/abvme-server-${{ matrix.rust_target }}"
+          chmod +x "src-tauri/binaries/abvme-server-${{ matrix.rust_target }}"
 
-      - name: Upload Artifact (Testing) 💾
-        uses: actions/upload-artifact@v4
-        if: ${{ steps.linux_prepare_assets.outputs.LINUX_ARTIFACT_NAME != '' }}
+      # ── Node / Tauri frontend ──────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
         with:
-          name: ${{ steps.linux_prepare_assets.outputs.LINUX_ARTIFACT_NAME }}
-          path: ${{ steps.linux_prepare_assets.outputs.LINUX_ARTIFACT_PATH }}
+          node-version: '22'
 
-      - name: Upload Release Asset (Linux) 📤
+      - name: Install Node Dependencies
+        run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build Tauri App (Linux) 🏗️
+        run: npm run tauri build -- --bundles deb,appimage
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Upload Linux Packages 📤
         if: ${{ env.IS_RELEASE == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
-          files: ${{ matrix.zip_name }}
+          files: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage
           generate_release_notes: true
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifact (Testing)
+        if: ${{ env.IS_RELEASE != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ABVME-Linux-${{ matrix.arch }}-packages
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/appimage/*.AppImage

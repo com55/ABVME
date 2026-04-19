@@ -1,0 +1,105 @@
+:root {
+  --bg-base: #1e1e1e;
+  --bg-panel: #252526;
+  --bg-input: #3c3c3c;
+  --bg-hover: #2a2d2e;
+  --bg-selected: #094771;
+  --bg-row-alt: #2a2a2a;
+  --border: #3c3c3c;
+  --text: #d4d4d4;
+  --text-dim: #8a8a8a;
+  --text-header: #cccccc;
+  --accent: #007acc;
+  --accent-hover: #0098ff;
+  --changed: #e5c07b;
+  --error: #f44747;
+  --success: #4ec9b0;
+  --warning: #cca700;
+  --scrollbar: #424242;
+  --scrollbar-hover: #686868;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  user-select: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-panel);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}
+
+input,
+select,
+textarea {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+input:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+button {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+  white-space: nowrap;
+}
+button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: #fff;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}

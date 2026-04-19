@@ -3,6 +3,7 @@ __pycache__/
 *.py[oc]
 build/
 dist/
+dist_backend/
 wheels/
 *.egg-info
 
@@ -13,3 +14,14 @@ wheels/
 test*
 
 .cursor/
+
+# Node
+node_modules/
+dist/
+
+# Tauri build output
+src-tauri/target/
+src-tauri/gen/
+
+# Temp files
+stdin
