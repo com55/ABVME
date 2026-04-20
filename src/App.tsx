@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauri, pickFiles, onFileDrop, onDragOver } from "./tauri-compat";
 import type { Asset, PreviewData, StatusMessage, SourceFile, CompressionType } from "./types";
 import * as api from "./api";
 import AssetTable from "./components/AssetTable";
@@ -35,32 +34,44 @@ export default function App() {
         setStatus({ text: "Ready", level: "info" });
       } else if (++tries >= maxTries) {
         clearInterval(interval);
-        setStatus({ text: "Backend unavailable. Start the Python server.", level: "error" });
+        setStatus({ text: "Backend not connected — run: python backend.py", level: "error" });
       }
     }, 500);
     return () => clearInterval(interval);
   }, []);
 
-  // Tauri drag-drop integration
+  // Tauri drag-drop integration (no-op in browser)
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    getCurrentWindow()
-      .onDragDropEvent((event) => {
-        if (event.payload.type === "over") {
-          setIsDragging(true);
-        } else if (event.payload.type === "drop") {
-          setIsDragging(false);
-          const paths = event.payload.paths ?? [];
-          if (paths.length > 0) loadFiles(paths);
-        } else {
-          setIsDragging(false);
-        }
-      })
-      .then((fn) => {
-        unlisten = fn;
-      });
-    return () => unlisten?.();
+    let unlistenDrop: (() => void) | undefined;
+    let unlistenOver: (() => void) | undefined;
+
+    onFileDrop((paths) => loadFiles(paths)).then((fn) => {
+      unlistenDrop = fn;
+    });
+    onDragOver(
+      () => setIsDragging(true),
+      () => setIsDragging(false)
+    ).then((fn) => {
+      unlistenOver = fn;
+    });
+
+    return () => {
+      unlistenDrop?.();
+      unlistenOver?.();
+    };
   }, []);
+
+  // Browser drag-drop fallback (using file paths shown in status — files can't yield
+  // real paths in browser security model, so we show a hint instead)
+  function handleBrowserDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    if (isTauri()) return; // handled by Tauri event above
+    setStatus({
+      text: "Drag-and-drop paths require Tauri. Use the Load Files button instead.",
+      level: "warning",
+    });
+  }
 
   async function loadFiles(paths: string[]) {
     if (!backendReady) return;
@@ -83,13 +94,20 @@ export default function App() {
   }
 
   async function handleOpenFiles() {
-    const paths = await open({
-      multiple: true,
-      title: "Open Unity Bundle Files",
-    });
-    if (!paths) return;
-    const list = Array.isArray(paths) ? paths : [paths];
-    if (list.length > 0) await loadFiles(list);
+    if (!isTauri()) {
+      // In browser: show a prompt asking the user to type the path,
+      // since browser security blocks real file paths
+      const path = window.prompt(
+        "Enter the full path(s) to the bundle file(s), separated by commas:"
+      );
+      if (!path?.trim()) return;
+      const paths = path.split(",").map((p) => p.trim()).filter(Boolean);
+      if (paths.length > 0) await loadFiles(paths);
+      return;
+    }
+
+    const paths = await pickFiles({ multiple: true, title: "Open Unity Bundle Files" });
+    if (paths && paths.length > 0) await loadFiles(paths);
   }
 
   const updatePreview = useCallback(async (asset: Asset) => {
@@ -101,9 +119,7 @@ export default function App() {
     setPreviewAssetName(asset.name);
     try {
       const data = await api.getPreview(asset.path_id);
-      if (!ctrl.signal.aborted) {
-        setPreview(data);
-      }
+      if (!ctrl.signal.aborted) setPreview(data);
     } catch {
       if (!ctrl.signal.aborted) setPreview(null);
     } finally {
@@ -128,8 +144,14 @@ export default function App() {
     );
     if (exportable.length === 0) return;
 
-    const dir = await open({ directory: true, title: "Select Export Folder" });
-    if (!dir || typeof dir !== "string") return;
+    let dir: string | null = null;
+    if (isTauri()) {
+      const result = await pickFiles({ directory: true, title: "Select Export Folder" });
+      dir = result?.[0] ?? null;
+    } else {
+      dir = window.prompt("Enter the full path to the export folder:");
+    }
+    if (!dir) return;
 
     setIsLoading(true);
     setStatus({ text: "Exporting…", level: "info" });
@@ -138,7 +160,7 @@ export default function App() {
       const msg =
         result.success_count === result.total
           ? `Exported ${result.success_count} asset(s) to ${dir}`
-          : `Exported ${result.success_count}/${result.total} assets (check log for errors)`;
+          : `Exported ${result.success_count}/${result.total} assets (some failed)`;
       setStatus({ text: msg, level: result.success_count === result.total ? "info" : "warning" });
     } catch (err) {
       setStatus({ text: `Export failed: ${err}`, level: "error" });
@@ -152,20 +174,24 @@ export default function App() {
     const asset = assets.find((a) => a.path_id === [...selectedIds][0]);
     if (!asset?.is_editable) return;
 
-    const filters =
-      asset.obj_type === "Texture2D"
-        ? [{ name: "Image Files", extensions: ["png", "jpg", "jpeg", "bmp", "tga", "dds"] }]
-        : [{ name: "All Files", extensions: ["*"] }];
-
-    const path = await open({ multiple: false, filters, title: "Select Replacement File" });
-    if (!path || typeof path !== "string") return;
+    let path: string | null = null;
+    if (isTauri()) {
+      const filters =
+        asset.obj_type === "Texture2D"
+          ? [{ name: "Image Files", extensions: ["png", "jpg", "jpeg", "bmp", "tga", "dds"] }]
+          : [{ name: "All Files", extensions: ["*"] }];
+      const result = await pickFiles({ multiple: false, filters, title: "Select Replacement File" });
+      path = result?.[0] ?? null;
+    } else {
+      path = window.prompt("Enter the full path to the replacement file:");
+    }
+    if (!path) return;
 
     setIsLoading(true);
     setStatus({ text: `Replacing ${asset.name}…`, level: "info" });
     try {
       const result = await api.replaceAsset(asset.path_id, path);
       if (result.is_success) {
-        // Refresh asset list and preview
         const refreshed = await api.getAssets();
         setAssets(refreshed.assets);
         await updatePreview(asset);
@@ -196,7 +222,6 @@ export default function App() {
     setStatus({ text: "Saving bundle…", level: "info" });
     try {
       await api.saveBundle(outputDir, packer);
-      // Refresh asset list to update change flags
       const refreshed = await api.getAssets();
       setAssets(refreshed.assets);
       setStatus({ text: `Bundle saved to ${outputDir}`, level: "info" });
@@ -208,8 +233,11 @@ export default function App() {
   }
 
   async function handlePickSaveDir(): Promise<string | null> {
-    const dir = await open({ directory: true, title: "Select Save Folder" });
-    return typeof dir === "string" ? dir : null;
+    if (isTauri()) {
+      const result = await pickFiles({ directory: true, title: "Select Save Folder" });
+      return result?.[0] ?? null;
+    }
+    return window.prompt("Enter the full path to the save folder:");
   }
 
   const selectedList = assets.filter((a) => selectedIds.has(a.path_id));
@@ -219,7 +247,12 @@ export default function App() {
   const hasChanges = assets.some((a) => a.is_changed);
 
   return (
-    <div className={`app ${isDragging ? "drag-over" : ""}`}>
+    <div
+      className={`app ${isDragging ? "drag-over" : ""}`}
+      onDragOver={(e) => { e.preventDefault(); if (!isTauri()) setIsDragging(true); }}
+      onDragLeave={() => { if (!isTauri()) setIsDragging(false); }}
+      onDrop={handleBrowserDrop}
+    >
       {/* Toolbar */}
       <div className="toolbar">
         <span className="app-title">ABVME</span>
@@ -243,7 +276,9 @@ export default function App() {
             Save Bundle
           </button>
         </div>
-        {!backendReady && <span className="backend-warn">⚠ Backend not connected</span>}
+        {!backendReady && (
+          <span className="backend-warn">⚠ Run: python backend.py</span>
+        )}
       </div>
 
       {/* Main Content */}
