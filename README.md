@@ -4,8 +4,10 @@
 A simple tool for viewing, modifying, and exporting Unity Asset Bundles.
 Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focused on making asset modification simpler. Built with Python using [UnityPy](https://github.com/K0lb3/UnityPy).
 
+## 📸 Screenshot
+
 <details>
-  <summary>Screenshot</summary>
+  <summary><b>Click to expand</b></summary>
   <img src="assets/image.png" width="100%">
 </details>
 
@@ -28,14 +30,18 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
     ```
 
 ## Features
-- **Asset Preview** - View asset contents directly
-- **Asset Export** - Export single or multiple assets
-- **Asset Modification** - Replace asset data
-- **Drag & Drop Support** - Load AssetBundles by dropping files into table, modify assets by dropping replacement files onto preview area
-- **Bundle Saving** - Save modified AssetBundles
-- **Supported asset types**:
-  - **TextAsset** - View, export, modify
-  - **Texture2D** - View, export, replace
+- **Asset Preview** - View asset contents directly in the app
+- **Asset Export** - Export single or multiple selected assets
+- **Asset Modification** - Replace asset data with external files
+- **Bundle Saving** - Save modified AssetBundles back to disk (all / selected / per-bundle)
+- **Column Filtering** - Filter the asset table by Type and Source File
+- **Drag & Drop**
+  - Drop AssetBundle files onto the table to load them
+  - Drop replacement files onto the preview to replace the selected asset
+- **Open from Explorer** - Selecting multiple bundle files in Explorer and opening them loads everything into one window
+- **Supported asset types**
+  - **TextAsset** — view, export, replace
+  - **Texture2D** — view, export, replace
 
 ## TODO
 - [ ] Mesh support
