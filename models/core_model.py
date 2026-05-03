@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Literal, Callable, Optional
 
 from UnityPy import Environment
+from UnityPy.enums import ClassIDType
 from UnityPy.files import SerializedFile, BundleFile, WebFile
 from UnityPy.streams.EndianBinaryReader import EndianBinaryReader
 
@@ -17,6 +18,13 @@ from .asset_model import AssetInfo
 
 # Configure logger
 log = logging.getLogger("ABVME")
+
+# Available asset types for extraction
+available_assets = [
+    ClassIDType.Texture2D, 
+    ClassIDType.TextAsset, 
+    # ClassIDType.Mesh
+]
 
 class ABVMECore:
     """
@@ -105,6 +113,8 @@ class ABVMECore:
         
         if not assets:
             for obj in self._env.objects:
+                if obj.type not in available_assets:
+                    continue
                 # Find source path
                 source_path = ""
                 target = obj.assets_file
