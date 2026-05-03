@@ -100,7 +100,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
   # ==================================================================================
-  # 2. LINUX BUILD (x64 & arm64)
+  # 2. LINUX BUILD (x64)
   # ==================================================================================
   build-linux:
     strategy:
@@ -109,9 +109,6 @@ jobs:
           - arch: x86_64
             runner: ubuntu-latest
             zip_name: ABVME-Linux-x64.zip
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-            zip_name: ABVME-Linux-arm64.zip
 
     runs-on: ${{ matrix.runner }}
     
