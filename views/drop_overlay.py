@@ -8,41 +8,54 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWi
 
 from utilities.drop_classifier import DropAction, DropDecision
 
+_MAX_VISIBLE_FILES = 5
+
+# Light tinted panels; titles are a darker shade of the same action color.
 _PANEL_STYLES = {
-    DropAction.OPEN: "background-color: rgba(33, 97, 140, 180);",
-    DropAction.REPLACE: "background-color: rgba(20, 90, 50, 180);",
-    DropAction.REPLACE_CONFIRM: "background-color: rgba(20, 90, 50, 180);",
-    DropAction.REJECT: "background-color: rgba(120, 40, 40, 180);",
+    DropAction.OPEN: "background-color: rgba(150, 198, 230, 170);",
+    DropAction.REPLACE: "background-color: rgba(150, 205, 165, 170);",
+    DropAction.REPLACE_CONFIRM: "background-color: rgba(150, 205, 165, 170);",
+    DropAction.REJECT: "background-color: rgba(230, 160, 160, 170);",
 }
 
 _TITLE_COLORS = {
-    DropAction.OPEN: "#041628",
-    DropAction.REPLACE: "#03150c",
-    DropAction.REPLACE_CONFIRM: "#03150c",
-    DropAction.REJECT: "#2a0808",
+    DropAction.OPEN: "#1a4d73",
+    DropAction.REPLACE: "#1b5c32",
+    DropAction.REPLACE_CONFIRM: "#1b5c32",
+    DropAction.REJECT: "#8a2424",
 }
 
 _TITLE_STYLE = (
     "background-color: transparent; font-size: 42px; font-weight: 800;"
 )
 _BODY_STYLE = (
-    "background-color: transparent; color: #f2f2f2;"
+    "background-color: transparent; color: #1a1a1a;"
     " font-size: 13px; font-weight: 400;"
 )
 _ARROW_STYLE = (
-    "background-color: transparent; color: #f2f2f2;"
+    "background-color: transparent; color: #1a1a1a;"
     " font-size: 13px; font-weight: 700;"
 )
 
 
 def _elide(label: QLabel, text: str, width: int) -> None:
-    if width <= 8:
+    # Skip elide until layout has a real width — otherwise names collapse to "n".
+    if width < 40:
         label.setText(text)
+        label.setToolTip("")
         return
     metrics = QFontMetrics(label.font())
     elided = metrics.elidedText(text, Qt.TextElideMode.ElideRight, width)
     label.setText(elided)
     label.setToolTip(text if elided != text else "")
+
+
+def _visible_names(paths: tuple[str, ...]) -> list[str]:
+    names = [Path(path).name for path in paths]
+    extra = len(names) - _MAX_VISIBLE_FILES
+    if extra > 0:
+        return names[:_MAX_VISIBLE_FILES] + [f"+ {extra} more"]
+    return names
 
 
 class _ReplaceRow(QWidget):
@@ -77,9 +90,8 @@ class _ReplaceRow(QWidget):
         layout.addWidget(self._right, 1)
 
     def apply_elide(self) -> None:
-        side = max(self._left.width(), 8)
-        _elide(self._left, self._left_text, side)
-        _elide(self._right, self._right_text, side)
+        _elide(self._left, self._left_text, max(self._left.width(), 0))
+        _elide(self._right, self._right_text, max(self._right.width(), 0))
 
 
 class DropOverlay(QWidget):
@@ -99,26 +111,33 @@ class DropOverlay(QWidget):
         self._body_layout = QVBoxLayout(self._body)
         self._body_layout.setContentsMargins(48, 0, 48, 0)
         self._body_layout.setSpacing(4)
-        self._body_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
+        self._body_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addStretch(2)
+        layout.setContentsMargins(0, 36, 0, 0)
         layout.addWidget(self._title, 0, Qt.AlignmentFlag.AlignHCenter)
-        layout.addSpacing(16)
+        layout.addStretch(1)
         layout.addWidget(self._body, 0)
-        layout.addStretch(5)
+        layout.addStretch(1)
 
         self._full_title = ""
+        self._shown_key: tuple | None = None
         self._line_labels: list[tuple[QLabel, str]] = []
         self._replace_rows: list[_ReplaceRow] = []
         self.hide()
+
+    def matches(self, decision: DropDecision, target_name: str | None) -> bool:
+        return self.isVisible() and self._shown_key == _decision_key(decision, target_name)
 
     def show_decision(
         self,
         decision: DropDecision,
         target_name: str | None = None,
     ) -> None:
+        key = _decision_key(decision, target_name)
+        if self.isVisible() and key == self._shown_key:
+            return
+        self._shown_key = key
         self.setStyleSheet(_PANEL_STYLES[decision.action])
         color = _TITLE_COLORS[decision.action]
         self._title.setStyleSheet(f"{_TITLE_STYLE} color: {color};")
@@ -132,6 +151,7 @@ class DropOverlay(QWidget):
         QTimer.singleShot(0, self._apply_elide)
 
     def clear(self) -> None:
+        self._shown_key = None
         self.hide()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
@@ -150,37 +170,45 @@ class DropOverlay(QWidget):
         self._line_labels.clear()
         self._replace_rows.clear()
 
-        names = [Path(path).name for path in decision.file_paths]
+        names = _visible_names(decision.file_paths)
         is_replace = decision.action in {DropAction.REPLACE, DropAction.REPLACE_CONFIRM}
         if is_replace and names:
             right = target_name or _target_from_detail(decision.detail)
             for name in names:
+                if name.startswith("+ "):
+                    self._add_line(name)
+                    continue
                 row = _ReplaceRow(name, right, self._body)
                 self._body_layout.addWidget(row)
                 self._replace_rows.append(row)
             return
 
         lines = names if names else [decision.detail]
-        if decision.action == DropAction.REJECT and decision.detail:
-            if names:
-                lines = names + [decision.detail]
-            else:
-                lines = [decision.detail]
         for line in lines:
-            label = QLabel(self._body)
-            label.setStyleSheet(_BODY_STYLE)
-            label.setWordWrap(False)
-            label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            self._body_layout.addWidget(label)
-            self._line_labels.append((label, line))
+            self._add_line(line)
+
+    def _add_line(self, text: str) -> None:
+        label = QLabel(self._body)
+        label.setStyleSheet(_BODY_STYLE)
+        label.setWordWrap(False)
+        label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self._body_layout.addWidget(label)
+        self._line_labels.append((label, text))
 
     def _apply_elide(self) -> None:
-        _elide(self._title, self._full_title, max(self.width() - 96, 8))
-        body_width = max(self._body.width() - 8, 8)
+        _elide(self._title, self._full_title, self.width() - 96)
+        body_width = self._body.width() - 8
         for label, text in self._line_labels:
             _elide(label, text, body_width)
         for row in self._replace_rows:
             row.apply_elide()
+
+
+def _decision_key(
+    decision: DropDecision,
+    target_name: str | None,
+) -> tuple:
+    return (decision.action, decision.file_paths, decision.title, target_name)
 
 
 def _target_from_detail(detail: str) -> str:

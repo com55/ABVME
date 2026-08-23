@@ -121,6 +121,10 @@ class ABVMEMainWindow(QMainWindow):
         main_layout.addWidget(splitter)
 
         self.drop_overlay = DropOverlay(central_widget)
+        self._pending_drop: tuple[DropDecision, str | None] | None = None
+        self._overlay_timer = QTimer(self)
+        self._overlay_timer.setSingleShot(True)
+        self._overlay_timer.timeout.connect(self._flush_drop_overlay)
         self._disable_child_drops()
         self.setAcceptDrops(True)
         
@@ -556,31 +560,57 @@ class ABVMEMainWindow(QMainWindow):
             self.drop_overlay.setGeometry(central.rect())
         self.drop_overlay.raise_()
 
-    def _update_drag_overlay(self, event: QDragEnterEvent | QDragMoveEvent) -> None:
+    def _update_drag_overlay(
+        self,
+        event: QDragEnterEvent | QDragMoveEvent,
+        *,
+        immediate: bool,
+    ) -> None:
         paths = self._paths_from_mime(event.mimeData())
         if not paths:
             event.ignore()
             return
+        event.acceptProposedAction()
         decision = self._current_drop_decision(paths)
         asset = self.viewmodel.get_single_selected_asset()
-        self.drop_overlay.show_decision(
-            decision,
-            target_name=asset.name if asset else None,
-        )
+        target_name = asset.name if asset else None
+        if self.drop_overlay.matches(decision, target_name):
+            self._overlay_timer.stop()
+            self._pending_drop = None
+            return
+        if immediate:
+            self._overlay_timer.stop()
+            self._pending_drop = None
+            self.drop_overlay.show_decision(decision, target_name=target_name)
+            self._sync_drop_overlay()
+            return
+        self._pending_drop = (decision, target_name)
+        self._overlay_timer.start(40)
+
+    def _flush_drop_overlay(self) -> None:
+        pending = self._pending_drop
+        if pending is None:
+            return
+        decision, target_name = pending
+        self._pending_drop = None
+        self.drop_overlay.show_decision(decision, target_name=target_name)
         self._sync_drop_overlay()
-        event.acceptProposedAction()
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        self._update_drag_overlay(event)
+        self._update_drag_overlay(event, immediate=True)
 
     def dragMoveEvent(self, event: QDragMoveEvent) -> None:
-        self._update_drag_overlay(event)
+        self._update_drag_overlay(event, immediate=False)
 
     def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
+        self._overlay_timer.stop()
+        self._pending_drop = None
         self.drop_overlay.clear()
         super().dragLeaveEvent(event)
 
     def dropEvent(self, event: QDropEvent) -> None:
+        self._overlay_timer.stop()
+        self._pending_drop = None
         self.drop_overlay.clear()
         paths = self._paths_from_mime(event.mimeData())
         decision = self._current_drop_decision(paths)

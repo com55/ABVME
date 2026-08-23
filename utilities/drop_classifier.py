@@ -118,7 +118,7 @@ def classify_drop(
         return DropDecision(
             DropAction.REPLACE_CONFIRM,
             files,
-            "Replace (confirm)",
+            "Replace",
             f"{names} → {selected_name}",
         )
 
