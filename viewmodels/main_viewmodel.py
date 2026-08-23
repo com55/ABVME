@@ -123,10 +123,10 @@ class MainViewModel(QObject):
             True if edit started successfully, False otherwise
         """
         if self.edit_worker and self.edit_worker.isRunning():
-            self.status_message.emit("Another edit is currently running.", logging.WARNING)
+            self.status_message.emit("Another replace is currently running.", logging.WARNING)
             return False
 
-        self.edit_started.emit(f"Editing {asset.name}...")
+        self.edit_started.emit(f"Replacing {asset.name}...")
         self.edit_worker = EditWorker(asset, source_path)
         self.edit_worker.finished.connect(self._on_edit_finished)
         self.edit_worker.start()
@@ -144,7 +144,7 @@ class MainViewModel(QObject):
 
         level = logging.INFO if result.is_success else logging.ERROR
         message = result.message or (
-            f"Edited {asset.name}" if result.is_success else f"Failed to edit {asset.name}"
+            f"Replaced {asset.name}" if result.is_success else f"Failed to replace {asset.name}"
         )
         
         self.status_message.emit(message, level)

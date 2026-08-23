@@ -168,7 +168,7 @@ class AssetInfo:
         if not self.is_editable:
             return EditResult(
                 status=ResultStatus.UNSUPPORTED,
-                message=f"Editing not supported for {self.obj_type.name}"
+                message=f"Replace is not supported for {self.obj_type.name}"
             )
 
         if isinstance(data, Texture2D):
@@ -199,7 +199,7 @@ class AssetInfo:
                 result = EditResult(
                     status=ResultStatus.COMPLETE, 
                     data=data.image,
-                    message="Texture2D updated successfully."
+                    message="Texture2D replaced successfully."
                 )
             except Exception as e:
                 return EditResult(
@@ -231,7 +231,7 @@ class AssetInfo:
                 result = EditResult(
                     status=ResultStatus.COMPLETE, 
                     data=data.m_Script,
-                    message="TextAsset updated successfully."
+                    message="TextAsset replaced successfully."
                 )
             except Exception as e:
                 return EditResult(
@@ -249,7 +249,7 @@ class AssetInfo:
         else:
             return EditResult(
                 status=ResultStatus.UNSUPPORTED, 
-                message=f"Editing not supported for {type(data).__name__}"
+                message=f"Replace is not supported for {type(data).__name__}"
             )
         if result.is_success:
             self._preview_data = None

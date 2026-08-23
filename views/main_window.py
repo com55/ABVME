@@ -24,7 +24,12 @@ from views.asset_table_widget import AssetTableWidget
 from views.drop_overlay import DropOverlay
 from views.preview_panel_widget import PreviewPanelWidget
 from utilities import FileDropWidget, get_resource_str
-from utilities.drop_classifier import DropAction, DropDecision, classify_drop
+from utilities.drop_classifier import (
+    DropAction,
+    DropDecision,
+    classify_drop,
+    suffix_in_container,
+)
 from services import StatusBarHandler
 from models import AssetInfo, EditResult
 
@@ -162,7 +167,7 @@ class ABVMEMainWindow(QMainWindow):
         actions_layout = QHBoxLayout()
         actions_layout.addStretch()
         
-        self.edit_button = QPushButton("  Edit")
+        self.edit_button = QPushButton("  Replace")
         self.edit_button.setIcon(QIcon(get_resource_str("assets/wand-magic-sparkles-solid.svg")))
         self.edit_button.setIconSize(QSize(16, 16))
         self.edit_button.setEnabled(False)
@@ -406,7 +411,7 @@ class ABVMEMainWindow(QMainWindow):
             
         if not self.viewmodel.is_editing_supported(asset):
             self._on_status_message(
-                f"Editing not supported for {asset.obj_type.name}.", 
+                f"Replace is not supported for {asset.obj_type.name}.", 
                 logging.WARNING
             )
             return
@@ -420,7 +425,25 @@ class ABVMEMainWindow(QMainWindow):
         )
         
         if file_path:
+            if (
+                asset.obj_type.name == "TextAsset"
+                and not suffix_in_container(file_path, asset.container)
+            ):
+                if not self._confirm_unmatched_textasset_replace(asset, file_path):
+                    return
             self.viewmodel.edit_asset(asset, file_path)
+
+    def _confirm_unmatched_textasset_replace(self, asset: AssetInfo, file_path: str) -> bool:
+        reply = QMessageBox.question(
+            self,
+            "Confirm Replace",
+            (
+                f"The suffix of '{Path(file_path).name}' is not in the container "
+                f"of '{asset.name}'. Replace anyway?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        return reply == QMessageBox.StandardButton.Yes
             
     def _on_export_button_clicked(self):
         """Handle export button click"""
@@ -577,7 +600,7 @@ class ABVMEMainWindow(QMainWindow):
                 reply = QMessageBox.question(
                     self,
                     "Confirm Replace",
-                    f"Apply '{Path(first_file).name}' to '{asset.name}'?",
+                    f"Replace '{asset.name}' with '{Path(first_file).name}'?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 )
                 if reply != QMessageBox.StandardButton.Yes:
@@ -588,13 +611,7 @@ class ABVMEMainWindow(QMainWindow):
             return
 
         if decision.action == DropAction.REPLACE_CONFIRM:
-            reply = QMessageBox.question(
-                self,
-                decision.title,
-                f"Apply '{Path(first_file).name}' to '{asset.name}'?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if reply != QMessageBox.StandardButton.Yes:
+            if not self._confirm_unmatched_textasset_replace(asset, first_file):
                 event.ignore()
                 return
             self.viewmodel.edit_asset(asset, first_file)
