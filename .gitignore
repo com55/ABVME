@@ -11,6 +11,9 @@ wheels/
 
 # Test file
 test*
+!tests/
+!tests/**
+tests/**/__pycache__/
 
 .cursor/
 /.vscode
