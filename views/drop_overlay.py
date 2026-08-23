@@ -1,7 +1,7 @@
 """Full-window drop overlay — visual only; not a drop target."""
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QResizeEvent
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from utilities.drop_classifier import DropAction, DropDecision
@@ -34,11 +34,10 @@ class DropOverlay(QWidget):
         self._label = QLabel(self)
         self._label.setWordWrap(True)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        font = QFont()
-        font.setPixelSize(22)
-        font.setBold(True)
-        self._label.setFont(font)
-        self._label.setStyleSheet("background-color: transparent; color: white;")
+        self._label.setStyleSheet(
+            "background-color: transparent; color: white;"
+            " font-size: 22px; font-weight: bold;"
+        )
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._label)
