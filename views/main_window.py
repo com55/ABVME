@@ -7,9 +7,12 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-from PySide6.QtCore import QObject, QSize, Qt, QTimer, QEvent, Signal
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtCore import QMimeData
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import (
+    QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QIcon,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QStatusBar, QProgressBar, QSplitter,
@@ -18,8 +21,10 @@ from PySide6.QtWidgets import (
 
 from viewmodels import MainViewModel
 from views.asset_table_widget import AssetTableWidget
+from views.drop_overlay import DropOverlay
 from views.preview_panel_widget import PreviewPanelWidget
 from utilities import FileDropWidget, get_resource_str
+from utilities.drop_classifier import DropAction, DropDecision, classify_drop
 from services import StatusBarHandler
 from models import AssetInfo, EditResult
 
@@ -109,11 +114,14 @@ class ABVMEMainWindow(QMainWindow):
         splitter.setSizes([500, 500])
         
         main_layout.addWidget(splitter)
+
+        self.drop_overlay = DropOverlay(central_widget)
+        self._disable_child_drops()
+        self.setAcceptDrops(True)
         
     def _setup_left_panel(self):
         """Setup left panel with load button and asset table"""
         self.left_panel = FileDropWidget()
-        self.left_panel.files_dropped.connect(self._on_files_dropped)
         
         left_layout = QVBoxLayout(self.left_panel)
         left_layout.setContentsMargins(5, 0, 5, 0)
@@ -145,10 +153,7 @@ class ABVMEMainWindow(QMainWindow):
         
     def _setup_right_panel(self):
         """Setup right panel with preview and action buttons"""
-        self.right_panel = FileDropWidget(
-            drop_handler=self._handle_preview_drop,
-            can_accept_drop=self._can_accept_preview_drop,
-        )
+        self.right_panel = FileDropWidget()
         
         right_layout = QVBoxLayout(self.right_panel)
         right_layout.setContentsMargins(5, 0, 5, 0)
@@ -178,16 +183,6 @@ class ABVMEMainWindow(QMainWindow):
         right_layout.addWidget(self.preview_panel)
         right_layout.setStretchFactor(self.preview_panel, 1)
         
-        # Setup drop event filters for preview widgets
-        self._setup_preview_drop_filters()
-        
-    def _setup_preview_drop_filters(self):
-        """Setup event filters for drag & drop on preview widgets"""
-        self._preview_drop_targets = self.preview_panel.get_preview_widgets()
-        for target in self._preview_drop_targets:
-            target.setAcceptDrops(True)
-            target.installEventFilter(self)
-            
     def _connect_viewmodel(self):
         """Connect ViewModel signals to View slots"""
         # Loading signals
@@ -325,10 +320,6 @@ class ABVMEMainWindow(QMainWindow):
         if files:
             self.viewmodel.load_files_from_paths(files)
             
-    def _on_files_dropped(self, paths: list[str]):
-        """Handle files dropped on left panel"""
-        self.viewmodel.load_files_from_paths(paths)
-        
     def _on_table_selection_changed(self, selected_assets: list[AssetInfo]):
         """Handle table selection changed"""
         self.viewmodel.update_selection(selected_assets)
@@ -502,89 +493,124 @@ class ABVMEMainWindow(QMainWindow):
             )
 
     # ===== Drag & Drop Handlers =====
-    
-    def _can_accept_preview_drop(self) -> bool:
-        """Check if preview panel can accept drops"""
-        return self.viewmodel.can_edit_asset()
-        
-    def _handle_preview_drop(self, paths: list[str]) -> bool:
-        """Handle files dropped on preview panel"""
-        asset = self.viewmodel.get_single_selected_asset()
-        if not asset:
-            self._on_status_message(
-                "Select exactly one asset before editing via drag-drop.", 
-                logging.WARNING
-            )
-            return False
-            
-        file_path = next((Path(p) for p in paths if Path(p).is_file()), None)
-        if not file_path:
-            self._on_status_message(
-                "Drag-drop must contain at least one file.", 
-                logging.WARNING
-            )
-            return False
-            
-        reply = QMessageBox.question(
-            self,
-            "Confirm Edit",
-            f"Apply '{file_path.name}' to '{asset.name}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        
-        if reply != QMessageBox.StandardButton.Yes:
-            return False
-            
-        return self.viewmodel.edit_asset(asset, str(file_path))
-        
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        """Event filter for preview drop targets"""
-        if watched in getattr(self, "_preview_drop_targets", []):
-            event_type = event.type()
-            drag_enter_types = {
-                QEvent.Type.DragEnter,
-                QEvent.Type.DragMove,
-                QEvent.Type.GraphicsSceneDragEnter,
-                QEvent.Type.GraphicsSceneDragMove,
-            }
-            drop_types = {QEvent.Type.Drop, QEvent.Type.GraphicsSceneDrop}
 
-            if event_type in drag_enter_types:
-                if self._preview_can_accept_drop(event):
-                    event.accept()
-                else:
-                    event.ignore()
-                return True
+    def _disable_child_drops(self) -> None:
+        """Make the window the only drop target."""
+        central = self.centralWidget()
+        if central is None:
+            return
+        central.setAcceptDrops(False)
+        for child in central.findChildren(QWidget):
+            child.setAcceptDrops(False)
 
-            if event_type in drop_types:
-                paths = self._event_local_file_paths(event)
-                if not paths:
-                    event.ignore()
-                    return True
-                accepted = self._handle_preview_drop(paths)
-                if accepted:
-                    event.accept()
-                else:
-                    event.ignore()
-                return True
-
-        return super().eventFilter(watched, event)
-        
-    def _preview_can_accept_drop(self, event: QEvent) -> bool:
-        """Check if preview can accept specific drop event"""
-        if not self._can_accept_preview_drop():
-            return False
-        return bool(self._event_local_file_paths(event))
-        
-    @staticmethod
-    def _event_local_file_paths(event: QEvent) -> list[str]:
-        """Extract local file paths from drop event"""
-        get_mime = getattr(event, "mimeData", None)
-        mime_data = get_mime() if callable(get_mime) else None
-        if not isinstance(mime_data, QMimeData) or not mime_data.hasUrls():
+    def _paths_from_mime(self, mime: QMimeData) -> list[str]:
+        if not mime.hasUrls():
             return []
-        return [str(url.toLocalFile()) for url in mime_data.urls() if url.isLocalFile()]
-        
+        paths: list[str] = []
+        for url in mime.urls():
+            if not url.isLocalFile():
+                continue
+            path = url.toLocalFile()
+            if path and Path(path).is_file():
+                paths.append(path)
+        return paths
+
+    def _current_drop_decision(self, paths: list[str]) -> DropDecision:
+        asset = self.viewmodel.get_single_selected_asset()
+        return classify_drop(
+            paths,
+            selected_type=asset.obj_type.name if asset else None,
+            selected_name=asset.name if asset else None,
+            selected_container=asset.container if asset else None,
+            can_replace=bool(asset and self.viewmodel.is_editing_supported(asset)),
+        )
+
+    def _sync_drop_overlay(self) -> None:
+        if not self.drop_overlay.isVisible():
+            return
+        central = self.centralWidget()
+        if central is not None:
+            self.drop_overlay.setGeometry(central.rect())
+        self.drop_overlay.raise_()
+
+    def _update_drag_overlay(self, event: QDragEnterEvent | QDragMoveEvent) -> None:
+        paths = self._paths_from_mime(event.mimeData())
+        if not paths:
+            event.ignore()
+            return
+        decision = self._current_drop_decision(paths)
+        self.drop_overlay.show_decision(decision)
+        self._sync_drop_overlay()
+        event.acceptProposedAction()
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        self._update_drag_overlay(event)
+
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
+        self._update_drag_overlay(event)
+
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
+        self.drop_overlay.clear()
+        super().dragLeaveEvent(event)
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        self.drop_overlay.clear()
+        paths = self._paths_from_mime(event.mimeData())
+        decision = self._current_drop_decision(paths)
+        if decision.action == DropAction.REJECT or not decision.file_paths:
+            event.ignore()
+            return
+
+        if decision.action == DropAction.OPEN:
+            self.viewmodel.load_files_from_paths(list(decision.file_paths))
+            event.acceptProposedAction()
+            return
+
+        asset = self.viewmodel.get_single_selected_asset()
+        if asset is None:
+            event.ignore()
+            return
+
+        first_file = decision.file_paths[0]
+        if decision.action == DropAction.REPLACE:
+            if asset.obj_type.name == "Texture2D":
+                reply = QMessageBox.question(
+                    self,
+                    "Confirm Replace",
+                    f"Apply '{Path(first_file).name}' to '{asset.name}'?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    event.ignore()
+                    return
+            self.viewmodel.edit_asset(asset, first_file)
+            event.acceptProposedAction()
+            return
+
+        if decision.action == DropAction.REPLACE_CONFIRM:
+            reply = QMessageBox.question(
+                self,
+                decision.title,
+                f"Apply '{Path(first_file).name}' to '{asset.name}'?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+            self.viewmodel.edit_asset(asset, first_file)
+            event.acceptProposedAction()
+            return
+
+        event.ignore()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        if getattr(self, "drop_overlay", None) is not None and self.drop_overlay.isVisible():
+            central = self.centralWidget()
+            if central is not None:
+                self.drop_overlay.setGeometry(central.rect())
+            self.drop_overlay.raise_()
+        super().resizeEvent(event)
+
     # ===== Helper Methods =====
     
     def _begin_background_task(self, message: str, show_progress: bool = False):

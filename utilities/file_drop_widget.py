@@ -22,7 +22,7 @@ class FileDropWidget(QWidget):
         can_accept_drop: Optional[Callable[[], bool]] = None
     ):
         super().__init__(parent)
-        self.setAcceptDrops(True)
+        self.setAcceptDrops(False)
         self.drop_handler = drop_handler
         self.can_accept_drop = can_accept_drop
 
