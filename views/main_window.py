@@ -562,7 +562,11 @@ class ABVMEMainWindow(QMainWindow):
             event.ignore()
             return
         decision = self._current_drop_decision(paths)
-        self.drop_overlay.show_decision(decision)
+        asset = self.viewmodel.get_single_selected_asset()
+        self.drop_overlay.show_decision(
+            decision,
+            target_name=asset.name if asset else None,
+        )
         self._sync_drop_overlay()
         event.acceptProposedAction()
 
