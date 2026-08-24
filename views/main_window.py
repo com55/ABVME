@@ -10,13 +10,14 @@ from typing import Literal
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
 from PySide6.QtCore import QMimeData
 from PySide6.QtGui import (
+    QAction,
     QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QIcon,
     QResizeEvent,
 )
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QStatusBar, QProgressBar, QSplitter,
-    QFileDialog, QMessageBox
+    QFileDialog, QMessageBox, QMenuBar,
 )
 
 from viewmodels import MainViewModel
@@ -57,6 +58,7 @@ class ABVMEMainWindow(QMainWindow):
         # Initialize UI
         self._setup_status_bar()
         self._setup_ui()
+        self._setup_menubar()
         self._connect_viewmodel()
         self._setup_logging()
         
@@ -127,6 +129,44 @@ class ABVMEMainWindow(QMainWindow):
         self._overlay_timer.timeout.connect(self._flush_drop_overlay)
         self._disable_child_drops()
         self.setAcceptDrops(True)
+
+    def _setup_menubar(self) -> None:
+        """Setup application menu bar mirroring toolbar actions."""
+        menu_bar = QMenuBar(self)
+        self.setMenuBar(menu_bar)
+
+        file_menu = menu_bar.addMenu("File")
+        self.open_action = QAction("Open Files...", self)
+        self.open_action.triggered.connect(self._on_load_button_clicked)
+        file_menu.addAction(self.open_action)
+
+        self.save_action = QAction("Save as...", self)
+        self.save_action.setEnabled(False)
+        self.save_action.triggered.connect(self._on_save_button_clicked)
+        file_menu.addAction(self.save_action)
+
+        file_menu.addSeparator()
+        exit_action = QAction("Exit", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
+
+        asset_menu = menu_bar.addMenu("Asset")
+        self.replace_action = QAction("Replace...", self)
+        self.replace_action.setEnabled(False)
+        self.replace_action.triggered.connect(self._on_edit_button_clicked)
+        asset_menu.addAction(self.replace_action)
+
+        self.export_action = QAction("Export...", self)
+        self.export_action.setEnabled(False)
+        self.export_action.triggered.connect(self._on_export_button_clicked)
+        asset_menu.addAction(self.export_action)
+
+        view_menu = menu_bar.addMenu("View")
+        self.show_all_action = QAction("Show all objects", self)
+        self.show_all_action.setCheckable(True)
+        self.show_all_action.setChecked(self.viewmodel.show_all_objects)
+        self.show_all_action.toggled.connect(self.viewmodel.set_show_all_objects)
+        view_menu.addAction(self.show_all_action)
         
     def _setup_left_panel(self):
         """Setup left panel with load button and asset table"""
@@ -224,6 +264,7 @@ class ABVMEMainWindow(QMainWindow):
         """Handle loading started"""
         self.setEnabled(False)
         self.asset_table.clear_table()
+        self.asset_table.apply_filter(clear=True)
         self.preview_panel.show_placeholder()
         self._begin_background_task(message, show_progress=True)
         
@@ -250,10 +291,11 @@ class ABVMEMainWindow(QMainWindow):
         """Handle assets loaded into table"""
         self.asset_table.load_assets(assets)
         self.preview_panel.show_placeholder("Select an asset from the list to view its preview.")
-        self.asset_table.apply_filter(clear=True)
-        
-        # Enable Save button if files loaded
-        self.save_button.setEnabled(len(assets) > 0)
+        self.asset_table.apply_filter()
+
+        has_assets = len(assets) > 0
+        self.save_button.setEnabled(has_assets)
+        self.save_action.setEnabled(has_assets)
         
     def _on_edit_started(self, message: str):
         """Handle edit started"""
@@ -273,13 +315,17 @@ class ABVMEMainWindow(QMainWindow):
     def _on_selection_changed(self, count: int):
         """Handle selection changed"""
         self.export_button.setEnabled(count > 0)
-        
+        self.export_action.setEnabled(count > 0)
+
         # Enable edit button only if exactly one editable asset is selected
         if count == 1:
             asset = self.viewmodel.get_single_selected_asset()
-            self.edit_button.setEnabled(asset is not None and asset.is_editable)
+            can_edit = asset is not None and asset.is_editable
+            self.edit_button.setEnabled(can_edit)
+            self.replace_action.setEnabled(can_edit)
         else:
             self.edit_button.setEnabled(False)
+            self.replace_action.setEnabled(False)
         
     def _on_status_message(self, message: str, level: int):
         """Handle status message"""

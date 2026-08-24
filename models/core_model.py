@@ -26,6 +26,19 @@ available_assets = [
     # ClassIDType.Mesh
 ]
 
+
+def filter_assets_by_available_types(
+    assets: list[AssetInfo],
+    available_types: list[ClassIDType],
+    show_all: bool,
+) -> list[AssetInfo]:
+    """Return all assets or only those whose type is in available_types."""
+    if show_all:
+        return list(assets)
+    allowed = set(available_types)
+    return [asset for asset in assets if asset.obj_type in allowed]
+
+
 class ABVMECore:
     """
     Core business logic for ABVME
@@ -34,7 +47,7 @@ class ABVMECore:
     
     def __init__(self):
         self._env: Environment
-        self._available_assets: list[AssetInfo] = []
+        self._all_assets: list[AssetInfo] = []
         self._source_paths: list[dict[str, SerializedFile | BundleFile | WebFile | EndianBinaryReader]] = []
     
     @property
@@ -99,32 +112,34 @@ class ABVMECore:
             log.info(f"Took {time.time() - start_time:.4f} seconds to load {file}")
             
         self._env = env
+        self._all_assets = []
         return self.get_available_assets()
 
-    def get_available_assets(self) -> list[AssetInfo]:
+    def get_available_assets(self, show_all: bool = False) -> list[AssetInfo]:
         """
         Extract available assets from loaded environment
+        
+        Args:
+            show_all: When True, return every object in the environment.
         
         Returns:
             List of AssetInfo objects
         """
-        assets = self._available_assets
         bundle_file_dict = {v: k for k, v in self._env.files.items()}
-        
-        if not assets:
+
+        if not self._all_assets:
             for obj in self._env.objects:
-                if obj.type not in available_assets:
-                    continue
-                # Find source path
                 source_path = ""
                 target = obj.assets_file
                 if target in bundle_file_dict:
                     source_path = bundle_file_dict[target]
                 elif hasattr(target, "parent") and target.parent in bundle_file_dict:
                     source_path = bundle_file_dict[target.parent]
-                assets.append(AssetInfo(obj, source_path))
-                    
-        return assets
+                self._all_assets.append(AssetInfo(obj, source_path))
+
+        return filter_assets_by_available_types(
+            self._all_assets, available_assets, show_all
+        )
 
     def save_all_changed_files(
         self,

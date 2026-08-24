@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Literal, cast
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QSettings, Signal
 
 from models import ABVMECore, AssetInfo, EditResult, ExportResult
 from services import LoaderWorker, EditWorker, SaveWorker
@@ -42,8 +42,12 @@ class MainViewModel(QObject):
     
     status_message = Signal(str, int)  # Message, log level
     
-    def __init__(self):
+    def __init__(self, settings: Optional[QSettings] = None):
         super().__init__()
+        self._settings = settings or QSettings("ABVME", "ABVME")
+        self.show_all_objects = bool(
+            self._settings.value("show_all_objects", False, type=bool)
+        )
         self.core: Optional[ABVMECore] = None
         self.assets: list[AssetInfo] = []
         self.selected_assets: list[AssetInfo] = []
@@ -79,13 +83,25 @@ class MainViewModel(QObject):
         
     def _on_loading_complete(self, assets: list[AssetInfo]):
         """Handle loading completion"""
-        self.assets = assets
         self.core = self.loader_worker.core if self.loader_worker else None
-        
-        self.loading_finished.emit(f"Loaded {len(assets)} assets.")
-        self.assets_loaded.emit(assets)
-        
+        if self.core:
+            self.assets = self.core.get_available_assets(show_all=self.show_all_objects)
+        else:
+            self.assets = assets
+
+        self.loading_finished.emit(f"Loaded {len(self.assets)} assets.")
+        self.assets_loaded.emit(self.assets)
+
         log.info(f"Successfully loaded: {len(self.core.source_paths) if self.core else 0} files.")
+
+    def set_show_all_objects(self, enabled: bool) -> None:
+        """Toggle whether the asset list includes every object type."""
+        self.show_all_objects = enabled
+        self._settings.setValue("show_all_objects", enabled)
+        if not self.core:
+            return
+        self.assets = self.core.get_available_assets(show_all=enabled)
+        self.assets_loaded.emit(self.assets)
         
     def update_selection(self, selected_assets: list[AssetInfo]):
         """

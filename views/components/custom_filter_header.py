@@ -24,8 +24,15 @@ class FilterHeader(QHeaderView):
     def set_filter_boxes(self, col, values):
         """กำหนดให้คอลัมน์นี้ใช้ระบบ Checkbox ตามค่าที่ส่งมา"""
         sorted_values = sorted(list(set(values)))
+        previous_unique = self._unique_values.get(col, [])
+        previous_active = self.active_filters.get(col)
         self._unique_values[col] = sorted_values
         if col not in self.active_filters:
+            self.active_filters[col] = sorted_values
+            return
+        # If every previous value was selected, treat this as unfiltered and
+        # include newly appeared types (e.g. Show all objects).
+        if isinstance(previous_active, list) and set(previous_active) == set(previous_unique):
             self.active_filters[col] = sorted_values
 
     def paintSection(self, painter, rect, logicalIndex):

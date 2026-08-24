@@ -148,14 +148,20 @@ class AssetInfo:
         elif isinstance(data, TextAsset) and self.obj_type == ClassIDType.TextAsset:
             self._preview_data = PreviewResult(data=data.m_Script, asset_type="TextAsset", parsed_data=parsed_data)
         elif isinstance(data, Mesh) and self.obj_type == ClassIDType.Mesh:
-            self._preview_data = PreviewResult(data=data.export(), asset_type="Mesh", parsed_data=parsed_data)
+            self._preview_data = PreviewResult(
+                data=None,
+                asset_type="Mesh",
+                status=ResultStatus.UNSUPPORTED,
+                parsed_data=parsed_data,
+                message="Preview is unavailable",
+            )
         else:
             self._preview_data = PreviewResult(
                 data=None, 
                 asset_type=self.obj_type.name,
                 status=ResultStatus.UNSUPPORTED,
                 parsed_data=parsed_data,
-                message="Preview not available for this asset type"
+                message="Preview is unavailable",
             )
         return self._preview_data
 

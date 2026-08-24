@@ -101,13 +101,17 @@ class PreviewPanelWidget(QWidget):
             
             # Always populate dump editor with parsed data
             self.dump_editor.setText(preview_result.parsed_data)
-            
-            if preview_result.status != ResultStatus.COMPLETE:
-                self._show_preview_placeholder(
-                    f"Preview failed for {asset.obj_type.name} (Status: {preview_result.status.value}):\n"
-                    f"{preview_result.message}"
+
+            is_previewable = (
+                preview_result.status == ResultStatus.COMPLETE
+                and preview_result.asset_type in ("Texture2D", "TextAsset")
+            )
+            if not is_previewable:
+                self._show_preview_placeholder("Preview is unavailable.")
+                log.info(
+                    f"Preview unavailable for {asset.obj_type.name} "
+                    f"(Status: {preview_result.status.value}): {preview_result.message}"
                 )
-                log.info(f"Preview failed for {asset.obj_type.name} (Status: {preview_result.status.value}): {preview_result.message}")
                 return
 
             if preview_result.asset_type == "Texture2D":
@@ -117,27 +121,13 @@ class PreviewPanelWidget(QWidget):
                     self.stack.setCurrentIndex(self.image_index)
                     log.info(f"Showing Texture2D preview: {asset.name}")
                 else:
-                    self._show_preview_placeholder("Texture2D data is empty.")
+                    self._show_preview_placeholder("Preview is unavailable.")
 
             elif preview_result.asset_type == "TextAsset":
                 # Data is str
                 self.text_editor.setText(str(preview_result.data))
                 self.stack.setCurrentIndex(self.text_index)
                 log.info(f"Showing TextAsset preview: {asset.name}")
-
-            elif preview_result.asset_type == "Mesh":
-                # Data is str (exported OBJ data)
-                text_data = preview_result.data if preview_result.data else "No Mesh data available."
-                self._show_preview_placeholder(
-                    f"Mesh preview (Unsupported):\n"
-                    f"Raw OBJ data snippet:\n{str(text_data)[:500]}..."
-                )
-                log.warning(f"Mesh preview unsupported: {asset.name}")
-
-            else:
-                self._show_preview_placeholder(
-                    f"Preview not supported for type: {preview_result.asset_type}"
-                )
 
         except Exception as e:
             log.error(f"Error generating preview: {e}", exc_info=True)
