@@ -9,70 +9,91 @@ after the window closes spawn their own independent instances.
 
 import json
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QDir, QLockFile
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
+LOCK_FILE_NAME = "ABVME_launch.lock"
 
-class LaunchCoalescer(QObject):
+
+class LaunchCoalescer:
     """
     Coalesces file paths from launches that arrive within a short collection
     window into the first launched process. Outside that window, each launch
     runs as its own independent instance with its own window.
     """
 
-    pathsCollected = Signal(list)  # Emitted once with the full batch of paths
-
     def __init__(self, key: str, collection_window_ms: int = 500):
-        super().__init__()
         self.key = key
         self.collection_window_ms = collection_window_ms
         self.server = QLocalServer()
-        self._collected: list[str] = []
-        self._idle_timer = QTimer()
-        self._idle_timer.setSingleShot(True)
-        self._idle_timer.timeout.connect(self._finish_collection)
+        lock_path = QDir.tempPath() + "/" + LOCK_FILE_NAME
+        self._lock = QLockFile(lock_path)
+        self._lock.setStaleLockTime(5000)
 
-    def start(self, file_paths: list[str] | None = None) -> bool:
+    def collect(self, file_paths: list[str] | None = None) -> list[str] | None:
         """
-        Forward `file_paths` to an existing collector if one is open. Otherwise
-        become the collector for `collection_window_ms` of idle time.
+        Collect or forward launch paths before any main window is created.
 
         Returns:
-            True  → caller is the primary; should open a window. `pathsCollected`
-                    fires once the window closes with the full batch.
-            False → paths were forwarded to another process; caller should exit.
+            None  → paths were forwarded to another process; caller should exit.
+            list  → full batch of paths; caller should open a window and load them.
         """
         file_paths = list(file_paths or [])
 
-        if self._forward_to_existing(file_paths):
-            return False
+        if self._lock.tryLock(0):
+            return self._collect_as_primary(file_paths)
 
-        # Become the collector. removeServer clears any stale endpoint left
-        # by a prior crashed run.
-        QLocalServer.removeServer(self.key)
-        if not self.server.listen(self.key):
-            # Lost a race against another process that just claimed the role.
-            # Retry the forward — by now the winner should be listening.
+        while True:
             if self._forward_to_existing(file_paths):
-                return False
-            # Couldn't forward and couldn't listen — run standalone.
-            self._collected = file_paths
-            QTimer.singleShot(0, lambda: self.pathsCollected.emit(self._collected))
-            return True
+                return None
+            if self._lock.tryLock(0):
+                return self._collect_as_primary(file_paths)
 
-        self.server.newConnection.connect(self._on_new_connection)
-        self._collected = file_paths
-        self._idle_timer.start(self.collection_window_ms)
-        return True
+    def start(self, file_paths: list[str] | None = None) -> list[str] | None:
+        """Alias for :meth:`collect` (backward-compatible entry name)."""
+        return self.collect(file_paths)
+
+    def _collect_as_primary(self, file_paths: list[str]) -> list[str]:
+        collected = list(file_paths)
+
+        QLocalServer.removeServer(self.key)
+        self.server.newConnection.connect(
+            lambda: self._append_from_pending(collected)
+        )
+
+        if not self.server.listen(self.key):
+            self._lock.unlock()
+            return collected
+
+        while True:
+            got_conn, timed_out = self.server.waitForNewConnection(
+                self.collection_window_ms
+            )
+            if got_conn:
+                self._append_from_pending(collected)
+            else:
+                break
+
+        self.server.close()
+        self._lock.unlock()
+        return collected
+
+    def _append_from_pending(self, collected: list[str]) -> None:
+        while self.server.hasPendingConnections():
+            socket = self.server.nextPendingConnection()
+            if not socket:
+                continue
+            self._read_paths_from_socket(socket, collected)
+            socket.close()
 
     def _forward_to_existing(self, file_paths: list[str]) -> bool:
         socket = QLocalSocket()
         socket.connectToServer(self.key)
-        if not socket.waitForConnected(200):
+        if not socket.waitForConnected(50):
             socket.abort()
             return False
         try:
-            data = json.dumps(file_paths).encode('utf-8')
+            data = json.dumps(file_paths).encode("utf-8")
             socket.write(data)
             socket.flush()
             socket.waitForBytesWritten(500)
@@ -83,25 +104,14 @@ class LaunchCoalescer(QObject):
             socket.close()
         return True
 
-    def _on_new_connection(self):
-        socket = self.server.nextPendingConnection()
-        if not socket:
-            return
+    def _read_paths_from_socket(
+        self, socket: QLocalSocket, collected: list[str]
+    ) -> None:
         if socket.waitForReadyRead(500):
             data = bytes(socket.readAll().data())
             try:
-                paths = json.loads(data.decode('utf-8'))
+                paths = json.loads(data.decode("utf-8"))
                 if isinstance(paths, list):
-                    self._collected.extend(p for p in paths if isinstance(p, str))
+                    collected.extend(p for p in paths if isinstance(p, str))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass
-        socket.close()
-        # Each new arrival extends the window so a steady drip of launches
-        # all batch together.
-        self._idle_timer.start(self.collection_window_ms)
-
-    def _finish_collection(self):
-        # Stop accepting new launches into this batch — future launches will
-        # find no collector and start their own instances.
-        self.server.close()
-        self.pathsCollected.emit(self._collected)

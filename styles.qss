@@ -60,13 +60,13 @@ QTableWidget, QListWidget {
 }
 
 /* เอฟเฟคตอนเอาเมาส์ชี้ (Hover) */
-QTableWidget::item:hover, QListWidget::item:hover {
+QListWidget::item:hover {
     /* background-color: #3e3e42; */
     color: white;
 }
 
 /* จัดการสีตัวอักษรใน Item ปกติ */
-QTableWidget::item, QListWidget::item {
+QListWidget::item {
     color: #cccccc;
     padding: 1px; /* เพิ่มระยะห่างให้ดูไม่อึดอัด */
 }

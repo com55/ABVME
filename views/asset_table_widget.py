@@ -3,9 +3,12 @@ Asset Table Widget - View component for displaying asset list
 """
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView
 )
+
+_CHANGED_FOREGROUND = QColor("#7DCEA0")
 
 from views.components.custom_filter_header import FilterHeader
 from models import AssetInfo
@@ -37,7 +40,7 @@ class AssetTableWidget(QWidget):
         
         # Replace default header with FilterHeader
         self.header = FilterHeader(self.table)
-        self.header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         self.header.setFixedHeight(24)
         self.header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.table.setHorizontalHeader(self.header)
@@ -125,7 +128,6 @@ class AssetTableWidget(QWidget):
             name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             name_item.setData(Qt.ItemDataRole.UserRole, asset)
             self.table.setItem(row, 0, name_item)
-            self._apply_changed_style(row, asset)
             
             # Type (Column 1)
             type_item = QTableWidgetItem(asset.obj_type.name)
@@ -152,24 +154,35 @@ class AssetTableWidget(QWidget):
             source_item.setData(Qt.ItemDataRole.UserRole, asset.source_path)
             source_item.setFlags(source_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row, 4, source_item)
+            self._apply_changed_style(row, asset)
         
         # Setup filter boxes for Type and SourceFile columns
         self.header.set_filter_boxes(1, list(all_types))
         self.header.set_filter_boxes(4, list(all_sources))
         
-        # Adjust column widths
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        # self.table.resizeColumnsToContents()
+        self.table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Interactive
+        )
+        self.table.resizeColumnsToContents()
         self.table.setSortingEnabled(True)
         
     def _apply_changed_style(self, row: int, asset: AssetInfo):
         """Apply visual indicator for changed assets"""
-        item = self.table.item(row, 0)
-        if not item:
+        name_item = self.table.item(row, 0)
+        if not name_item:
             return
-        suffix = " *" if bool(getattr(asset, "is_changed", False)) else "   "
+        is_changed = bool(getattr(asset, "is_changed", False))
+        suffix = " *" if is_changed else "   "
         base_name = asset.name or ""
-        item.setText(f"{base_name}{suffix}")
+        name_item.setText(f"{base_name}{suffix}")
+        brush = QBrush(_CHANGED_FOREGROUND) if is_changed else None
+        for col in range(5):
+            item = self.table.item(row, col)
+            if item:
+                if brush is None:
+                    item.setData(Qt.ItemDataRole.ForegroundRole, None)
+                else:
+                    item.setForeground(brush)
         
     def refresh_asset_display(self, asset: AssetInfo):
         """Refresh display for a specific asset"""

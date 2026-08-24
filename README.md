@@ -21,12 +21,12 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
   - **Using [uv](https://github.com/astral-sh/uv#installation) (Recommended)**
     ```bash
     uv sync
-    uv run app.py
+    uv run main.py
     ```
   - **Using pip**
     ```bash
     pip install -r requirements.txt
-    python app.py
+    python main.py
     ```
 
 ## Features

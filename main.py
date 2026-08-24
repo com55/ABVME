@@ -67,7 +67,8 @@ def main():
     # one process per file) into a single instance. Sequential launches outside
     # the collection window each spawn their own window.
     coalescer = LaunchCoalescer("ABVME_Launch")
-    if not coalescer.start(file_args):
+    paths = coalescer.collect(file_args)
+    if paths is None:
         # Files forwarded to an in-flight collector — exit silently.
         return
 
@@ -77,9 +78,8 @@ def main():
     window = ABVMEMainWindow()
     window.show()
 
-    coalescer.pathsCollected.connect(
-        lambda paths: window.viewmodel.load_files_from_paths(paths) if paths else None
-    )
+    if paths:
+        window.viewmodel.load_files_from_paths(paths)
 
     sys.exit(app.exec())
 
