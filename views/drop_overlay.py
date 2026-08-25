@@ -204,13 +204,13 @@ class DropOverlay(QWidget):
         is_replace = decision.action in {DropAction.REPLACE, DropAction.REPLACE_CONFIRM}
         if is_replace and names:
             right = target_name or _target_from_detail(decision.detail)
-            for name in names:
-                if name.startswith("+ "):
-                    self._add_line(name)
-                    continue
-                row = _ReplaceRow(name, right, self._body)
-                self._body_layout.addWidget(row)
-                self._replace_rows.append(row)
+            first_name = names[0]
+            row = _ReplaceRow(first_name, right, self._body)
+            self._body_layout.addWidget(row)
+            self._replace_rows.append(row)
+            extra = len(decision.file_paths) - 1
+            if extra > 0:
+                self._add_line(f"using first file (+{extra} more)")
             return
 
         lines = names if names else [decision.detail]

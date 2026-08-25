@@ -8,6 +8,7 @@ after the window closes spawn their own independent instances.
 """
 
 import json
+import time
 
 from PySide6.QtCore import QDir, QLockFile
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
@@ -22,11 +23,19 @@ class LaunchCoalescer:
     runs as its own independent instance with its own window.
     """
 
-    def __init__(self, key: str, collection_window_ms: int = 500):
+    def __init__(
+        self,
+        key: str,
+        collection_window_ms: int = 500,
+        *,
+        lock_file_name: str = LOCK_FILE_NAME,
+        secondary_deadline_ms: int = 20_000,
+    ):
         self.key = key
         self.collection_window_ms = collection_window_ms
+        self.secondary_deadline_ms = secondary_deadline_ms
         self.server = QLocalServer()
-        lock_path = QDir.tempPath() + "/" + LOCK_FILE_NAME
+        lock_path = QDir.tempPath() + "/" + lock_file_name
         self._lock = QLockFile(lock_path)
         self._lock.setStaleLockTime(5000)
 
@@ -43,11 +52,13 @@ class LaunchCoalescer:
         if self._lock.tryLock(0):
             return self._collect_as_primary(file_paths)
 
-        while True:
+        deadline = time.monotonic() + (self.secondary_deadline_ms / 1000)
+        while time.monotonic() < deadline:
             if self._forward_to_existing(file_paths):
                 return None
             if self._lock.tryLock(0):
                 return self._collect_as_primary(file_paths)
+        return file_paths
 
     def start(self, file_paths: list[str] | None = None) -> list[str] | None:
         """Alias for :meth:`collect` (backward-compatible entry name)."""
@@ -65,18 +76,25 @@ class LaunchCoalescer:
             self._lock.unlock()
             return collected
 
-        while True:
-            got_conn, timed_out = self.server.waitForNewConnection(
-                self.collection_window_ms
-            )
-            if got_conn:
-                self._append_from_pending(collected)
-            else:
-                break
+        self._drain_until_quiet(collected)
 
         self.server.close()
         self._lock.unlock()
         return collected
+
+    def _drain_until_quiet(self, collected: list[str]) -> None:
+        """Block until waitForNewConnection reports a full quiet window.
+
+        `newConnection` may already have consumed the socket, so a False
+        `got_conn` is not silence — only `timed_out` ends the drain.
+        """
+        while True:
+            _got_conn, timed_out = self.server.waitForNewConnection(
+                self.collection_window_ms
+            )
+            self._append_from_pending(collected)
+            if timed_out:
+                break
 
     def _append_from_pending(self, collected: list[str]) -> None:
         while self.server.hasPendingConnections():
@@ -96,7 +114,9 @@ class LaunchCoalescer:
             data = json.dumps(file_paths).encode("utf-8")
             socket.write(data)
             socket.flush()
-            socket.waitForBytesWritten(500)
+            if not socket.waitForBytesWritten(500):
+                socket.abort()
+                return False
             socket.disconnectFromServer()
             if socket.state() != QLocalSocket.LocalSocketState.UnconnectedState:
                 socket.waitForDisconnected(500)

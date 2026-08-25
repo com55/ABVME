@@ -72,6 +72,21 @@ class DropOverlayTests(unittest.TestCase):
         self.assertLess(label.fontMetrics().horizontalAdvance(label.text()), 400)
         self.assertEqual(label.toolTip(), long_name)
 
+    def test_replace_multiple_files_shows_first_only(self) -> None:
+        decision = DropDecision(
+            action=DropAction.REPLACE,
+            file_paths=("one.png", "two.png", "three.png"),
+            title="Replace",
+            detail="one.png → hero",
+        )
+        self.overlay.show_decision(decision, target_name="hero")
+        self.app.processEvents()
+
+        self.assertEqual(len(self.overlay._replace_rows), 1)
+        self.assertEqual(self.overlay._replace_rows[0]._left_text, "one.png")
+        self.assertEqual(len(self.overlay._line_labels), 1)
+        self.assertEqual(self.overlay._line_labels[0][1], "using first file (+2 more)")
+
     def test_title_and_body_have_text_glow(self) -> None:
         decision = DropDecision(
             action=DropAction.OPEN,
