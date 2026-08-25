@@ -10,8 +10,8 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-from views import ABVMEMainWindow
-from utilities import LaunchCoalescer, get_resource_path
+from utilities.launch_coalescer import LaunchCoalescer
+from utilities.resource_path import get_resource_path
 
 
 # Configure logging
@@ -71,6 +71,10 @@ def main():
     if paths is None:
         # Files forwarded to an in-flight collector — exit silently.
         return
+
+    # Import the window only in the process that will show it, so sibling
+    # launches can forward paths without loading UnityPy / the full UI.
+    from views.main_window import ABVMEMainWindow
 
     app.setStyle("Fusion")
     load_stylesheet(app)

@@ -44,8 +44,9 @@ _MENU_ICON_SIZE = 16
 def _menu_icon(relative_path: str | None = None) -> QIcon:
     """Return a menu-item icon, or a transparent placeholder if none is given.
 
-    Qt sizes the icon column from the widest icon in that menu, so every action
-    needs an icon — even items with no artwork.
+    Qt sizes the icon column from the widest icon in that menu, so every
+    non-checkable action needs an icon — even items with no artwork.
+    Checkable items must stay icon-less so Qt can draw the check mark.
     """
     if relative_path:
         return QIcon(get_resource_str(relative_path))
@@ -192,7 +193,6 @@ class ABVMEMainWindow(QMainWindow):
         self.show_all_action = QAction("Show all objects", self)
         self.show_all_action.setCheckable(True)
         self.show_all_action.setChecked(self.viewmodel.show_all_objects)
-        self.show_all_action.setIcon(_menu_icon())
         self.show_all_action.toggled.connect(self.viewmodel.set_show_all_objects)
         view_menu.addAction(self.show_all_action)
         

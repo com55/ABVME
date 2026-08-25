@@ -2,10 +2,15 @@
 Asset Table Widget - View component for displaying asset list
 """
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView
+    QAbstractScrollArea,
+    QHeaderView,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from views.components.custom_filter_header import FilterHeader
@@ -13,6 +18,7 @@ from models import AssetInfo
 
 _CHANGED_FOREGROUND = QColor("#7DCEA0")
 MAX_COLUMN_WIDTH = 360
+_CELL_TEXT_PADDING = 16
 
 
 class AssetTableWidget(QWidget):
@@ -26,6 +32,9 @@ class AssetTableWidget(QWidget):
     
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        self._auto_fit_timer = QTimer(self)
+        self._auto_fit_timer.setSingleShot(True)
+        self._auto_fit_timer.timeout.connect(self._auto_fit_columns)
         self._setup_ui()
         self._connect_signals()
         
@@ -65,6 +74,9 @@ class AssetTableWidget(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(True)
         self.table.setWordWrap(False)
+        self.table.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored
+        )
         
         layout.addWidget(self.table)
         
@@ -113,8 +125,9 @@ class AssetTableWidget(QWidget):
         
         Args:
             assets: List of AssetInfo objects to display
-            auto_fit: When True, size columns to contents (capped). Use only
-                on the first load after opening files, not on filter rebuilds.
+            auto_fit: When True, size columns to the first visible page
+                after layout (capped). Use only on the first load after
+                opening files, not on filter rebuilds.
         """
         # Prepare for loading
         self.table.setSortingEnabled(False)
@@ -169,16 +182,54 @@ class AssetTableWidget(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Interactive
         )
-        if auto_fit:
-            self._auto_fit_columns()
         self.table.setSortingEnabled(True)
+        if auto_fit:
+            self.table.sortItems(0, Qt.SortOrder.AscendingOrder)
+            self._auto_fit_timer.start(0)
+        else:
+            self._auto_fit_timer.stop()
+
+    def _visible_row_indexes(self) -> list[int]:
+        row_count = self.table.rowCount()
+        if row_count <= 0:
+            return []
+        default_h = max(self.table.verticalHeader().defaultSectionSize(), 1)
+        heights = [
+            height for height in (
+                self.table.viewport().height(),
+                self.height() - self.table.horizontalHeader().height(),
+            )
+            if height > 0
+        ]
+        viewport_height = min(heights) if heights else default_h
+        page = max(viewport_height // default_h, 1) + 1
+        top = self.table.indexAt(QPoint(0, 0)).row()
+        bottom = self.table.indexAt(QPoint(0, max(viewport_height - 1, 0))).row()
+        if top < 0:
+            top = 0
+        if bottom < 0:
+            bottom = min(row_count - 1, top + page - 1)
+        bottom = min(bottom, top + page - 1, row_count - 1)
+        return [
+            row for row in range(top, bottom + 1)
+            if not self.table.isRowHidden(row)
+        ]
+
+    def _cell_text_width(self, row: int, column: int) -> int:
+        item = self.table.item(row, column)
+        if item is None:
+            return 0
+        return self.table.fontMetrics().horizontalAdvance(item.text())
 
     def _auto_fit_columns(self) -> None:
-        self.table.resizeColumnsToContents()
+        header = self.table.horizontalHeader()
+        visible_rows = self._visible_row_indexes()
         for column in range(self.table.columnCount()):
-            width = self.table.columnWidth(column)
-            if width > MAX_COLUMN_WIDTH:
-                self.table.setColumnWidth(column, MAX_COLUMN_WIDTH)
+            width = header.sectionSizeHint(column)
+            for row in visible_rows:
+                width = max(width, self._cell_text_width(row, column) + _CELL_TEXT_PADDING)
+            width = min(max(width, header.minimumSectionSize()), MAX_COLUMN_WIDTH)
+            self.table.setColumnWidth(column, width)
         
     def _apply_changed_style(self, row: int, asset: AssetInfo):
         """Apply visual indicator for changed assets"""

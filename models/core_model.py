@@ -3,28 +3,37 @@ Core Model Layer - MVVM Pattern
 Contains core business logic for loading and managing Unity assets
 """
 
-import time
-import logging
-from pathlib import Path
-from typing import Literal, Callable, Optional
+from __future__ import annotations
 
-from UnityPy import Environment
-from UnityPy.enums import ClassIDType
-from UnityPy.files import SerializedFile, BundleFile, WebFile
-from UnityPy.streams.EndianBinaryReader import EndianBinaryReader
+import logging
+import time
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable, Literal, Optional
 
 from .asset_model import AssetInfo
 
+if TYPE_CHECKING:
+    from UnityPy import Environment
+    from UnityPy.enums import ClassIDType
+    from UnityPy.files import BundleFile, SerializedFile, WebFile
+    from UnityPy.streams.EndianBinaryReader import EndianBinaryReader
 
 # Configure logger
 log = logging.getLogger("ABVME")
 
-# Available asset types for extraction
-available_assets = [
-    ClassIDType.Texture2D, 
-    ClassIDType.TextAsset, 
-    # ClassIDType.Mesh
-]
+
+def _available_asset_types() -> list[ClassIDType]:
+    from UnityPy.enums import ClassIDType
+
+    return [ClassIDType.Texture2D, ClassIDType.TextAsset]
+
+
+def __getattr__(name: str) -> list[ClassIDType]:
+    if name == "available_assets":
+        value = _available_asset_types()
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def filter_assets_by_available_types(
@@ -75,6 +84,8 @@ class ABVMECore:
         Returns:
             List of AssetInfo objects extracted from bundles
         """
+        from UnityPy import Environment
+
         env = Environment()
         max_try = 100
         total_files = len(file_list)
@@ -138,7 +149,7 @@ class ABVMECore:
                 self._all_assets.append(AssetInfo(obj, source_path))
 
         return filter_assets_by_available_types(
-            self._all_assets, available_assets, show_all
+            self._all_assets, _available_asset_types(), show_all
         )
 
     def save_all_changed_files(
@@ -153,6 +164,8 @@ class ABVMECore:
             output_dir: Output directory path
             packer: Compression method (lz4, lzma, or original)
         """
+        from UnityPy.streams.EndianBinaryReader import EndianBinaryReader
+
         start_time = time.time()
         output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -180,6 +193,8 @@ class ABVMECore:
             output_path: Output file path
             packer: Compression method (none, lz4, lzma, or original)
         """
+        from UnityPy.streams.EndianBinaryReader import EndianBinaryReader
+
         target_file = self._env.files.get(file)
         if not target_file:
             log.error(f"File {file} not found in loaded files.")

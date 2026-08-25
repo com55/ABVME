@@ -43,6 +43,10 @@ class AssetTableWidgetTests(unittest.TestCase):
 
     def setUp(self) -> None:
         self.widget = AssetTableWidget()
+        self.widget.setFixedSize(480, 180)
+
+    def _flush(self) -> None:
+        self.app.processEvents()
 
     def test_header_is_interactive_before_load(self) -> None:
         header = self.widget.table.horizontalHeader()
@@ -78,21 +82,56 @@ class AssetTableWidgetTests(unittest.TestCase):
             [FakeAsset(name=long_name)],
             auto_fit=True,
         )
+        self._flush()
         self.assertLessEqual(self.widget.table.columnWidth(0), MAX_COLUMN_WIDTH)
 
     def test_auto_fit_scopes_to_visible_rows(self) -> None:
         short_rows = [FakeAsset(name="ab") for _ in range(40)]
-        assets = short_rows + [FakeAsset(name="n" * 400)]
+        long_row = FakeAsset(name="n" * 400)
         self.widget.resize(480, 180)
         self.widget.show()
         self.app.processEvents()
-        self.widget.load_assets(assets, auto_fit=True)
-        self.app.processEvents()
+
+        self.widget.load_assets(short_rows, auto_fit=True)
+        self._flush()
+        short_width = self.widget.table.columnWidth(0)
+
+        self.widget.load_assets(short_rows + [long_row], auto_fit=True)
+        self._flush()
+
+        self.assertEqual(self.widget.table.columnWidth(0), short_width)
+        self.assertLess(short_width, MAX_COLUMN_WIDTH)
+
+    def test_auto_fit_ignores_offscreen_rows_before_show(self) -> None:
+        short_rows = [FakeAsset(name="ab") for _ in range(40)]
+        long_row = FakeAsset(name="n" * 400)
+        self.widget.load_assets(short_rows + [long_row], auto_fit=True)
+        self._flush()
+
         self.assertLess(self.widget.table.columnWidth(0), MAX_COLUMN_WIDTH)
-        self.assertEqual(
-            self.widget.table.horizontalHeader().resizeContentsPrecision(),
-            0,
+
+    def test_auto_fit_fits_visible_pathid_text(self) -> None:
+        long_path_id = "8156803549656132905"
+        visible = [
+            FakeAsset(name="aaa_splash", path_id=long_path_id) for _ in range(8)
+        ]
+        offscreen = [
+            FakeAsset(name="zzz_" + ("n" * 400), path_id="1") for _ in range(40)
+        ]
+        self.widget.resize(480, 220)
+        self.widget.show()
+        self._flush()
+        self.widget.load_assets(visible + offscreen, auto_fit=True)
+        self._flush()
+
+        path_width = self.widget.table.columnWidth(2)
+        name_width = self.widget.table.columnWidth(0)
+        metrics = self.widget.table.fontMetrics()
+        self.assertGreaterEqual(
+            path_width,
+            metrics.horizontalAdvance(long_path_id),
         )
+        self.assertLess(name_width, MAX_COLUMN_WIDTH)
 
     def test_row_heights_use_fixed_mode(self) -> None:
         self.widget.load_assets([FakeAsset()])
@@ -103,6 +142,7 @@ class AssetTableWidgetTests(unittest.TestCase):
 
     def test_reload_without_auto_fit_keeps_column_width(self) -> None:
         self.widget.load_assets([FakeAsset(name="a")], auto_fit=True)
+        self._flush()
         self.widget.table.setColumnWidth(0, 42)
         self.widget.load_assets(
             [FakeAsset(name="very_long_asset_name_for_width")],

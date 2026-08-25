@@ -3,30 +3,44 @@ Asset Model Layer - MVVM Pattern
 Contains data structures and business logic for assets
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
-import json
+from functools import cache
 from pathlib import Path
-from typing import Any, BinaryIO, Optional
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any, BinaryIO, Optional
 
 from PIL import Image as PILImage
 from PIL.Image import Image
-from UnityPy.classes import Texture2D, TextAsset, Mesh
-from UnityPy.files import ObjectReader
-from UnityPy.enums import ClassIDType
-from UnityPy.tools.extractor import exportTextAsset, exportTexture2D, exportMesh
 
-AVAILABLE_ASSETS_FOR_EDIT = [
-    ClassIDType.Texture2D, 
-    ClassIDType.TextAsset, 
-    # ClassIDType.Mesh
-]
+if TYPE_CHECKING:
+    from UnityPy.classes import Mesh, TextAsset, Texture2D
+    from UnityPy.enums import ClassIDType
+    from UnityPy.files import ObjectReader
 
-AVAILABLE_ASSETS_FOR_EXPORT = [
-    ClassIDType.Texture2D, 
-    ClassIDType.TextAsset, 
-    # ClassIDType.Mesh,
-]
+
+@cache
+def _unity() -> SimpleNamespace:
+    """Import UnityPy on first asset use, not when the window module loads."""
+    from UnityPy.classes import Mesh, TextAsset, Texture2D
+    from UnityPy.enums import ClassIDType
+    from UnityPy.tools.extractor import exportMesh, exportTextAsset, exportTexture2D
+
+    edit_types = (ClassIDType.Texture2D, ClassIDType.TextAsset)
+    return SimpleNamespace(
+        Texture2D=Texture2D,
+        TextAsset=TextAsset,
+        Mesh=Mesh,
+        ClassIDType=ClassIDType,
+        exportTextAsset=exportTextAsset,
+        exportTexture2D=exportTexture2D,
+        exportMesh=exportMesh,
+        edit_types=edit_types,
+        export_types=edit_types,
+    )
+
 
 class ResultStatus(str, Enum):
     """Status of operation results"""
@@ -141,6 +155,7 @@ class AssetInfo:
     """
     
     def __init__(self, obj: ObjectReader[Any], source_path: str = ""):
+        unity = _unity()
         self._obj: ObjectReader[Any] = obj
         self.name: str = self._obj.peek_name() or ""
         self.container: str = self._obj.container or ""
@@ -148,8 +163,8 @@ class AssetInfo:
         self.obj_type: ClassIDType = self._obj.type
         self.source_path: str = source_path
         self.is_changed: bool = False
-        self.is_editable: bool = self.obj_type in AVAILABLE_ASSETS_FOR_EDIT
-        self.is_exportable: bool = self.obj_type in AVAILABLE_ASSETS_FOR_EXPORT
+        self.is_editable: bool = self.obj_type in unity.edit_types
+        self.is_exportable: bool = self.obj_type in unity.export_types
         self._readed_data = None
         self._preview_data: Optional[PreviewResult] = None
         self._dump_text: Optional[str] = None
@@ -171,12 +186,13 @@ class AssetInfo:
             return self._preview_data
         
         data = self._get_readed_data()
+        unity = _unity()
 
-        if isinstance(data, Texture2D) and self.obj_type == ClassIDType.Texture2D:
+        if isinstance(data, unity.Texture2D) and self.obj_type == unity.ClassIDType.Texture2D:
             self._preview_data = PreviewResult(data=data.image, asset_type="Texture2D")
-        elif isinstance(data, TextAsset) and self.obj_type == ClassIDType.TextAsset:
+        elif isinstance(data, unity.TextAsset) and self.obj_type == unity.ClassIDType.TextAsset:
             self._preview_data = PreviewResult(data=data.m_Script, asset_type="TextAsset")
-        elif isinstance(data, Mesh) and self.obj_type == ClassIDType.Mesh:
+        elif isinstance(data, unity.Mesh) and self.obj_type == unity.ClassIDType.Mesh:
             self._preview_data = PreviewResult(
                 data=None,
                 asset_type="Mesh",
@@ -205,13 +221,14 @@ class AssetInfo:
         Supports Texture2D and TextAsset editing
         """
         data = self._get_readed_data()
+        unity = _unity()
         if not self.is_editable:
             return EditResult(
                 status=ResultStatus.UNSUPPORTED,
                 message=f"Replace is not supported for {self.obj_type.name}"
             )
 
-        if isinstance(data, Texture2D):
+        if isinstance(data, unity.Texture2D):
             try:
                 image_data = None
                 if isinstance(new_data, Image):
@@ -249,7 +266,7 @@ class AssetInfo:
                     message=f"Failed to save texture: {str(e)}"
                 )
                 
-        elif isinstance(data, TextAsset):
+        elif isinstance(data, unity.TextAsset):
             try:
                 if isinstance(new_data, str):
                     if Path(new_data).exists():
@@ -281,7 +298,7 @@ class AssetInfo:
                     message=f"Script error: {str(e)}"
                 )
                 
-        elif isinstance(data, Mesh):
+        elif isinstance(data, unity.Mesh):
             return EditResult(
                 status=ResultStatus.NOT_IMPLEMENTED, 
                 message="Mesh editing is coming soon!"
@@ -302,7 +319,8 @@ class AssetInfo:
         Supports Texture2D, TextAsset, and Mesh export
         """
         obj_data = self._get_readed_data()
-        if not isinstance(obj_data, (TextAsset, Texture2D, Mesh)):
+        unity = _unity()
+        if not isinstance(obj_data, (unity.TextAsset, unity.Texture2D, unity.Mesh)):
             return ExportResult(
                 status=ResultStatus.UNSUPPORTED,
                 message=f"Export not supported for type: {type(obj_data).__name__}"
@@ -337,12 +355,12 @@ class AssetInfo:
             full_path_no_ext = output_dir / file_name
 
             # Call appropriate export function
-            if isinstance(obj_data, TextAsset):
-                exportTextAsset(obj_data, str(full_path_no_ext), file_extension)
-            elif isinstance(obj_data, Texture2D):
-                exportTexture2D(obj_data, str(full_path_no_ext), file_extension)
-            elif isinstance(obj_data, Mesh):
-                exportMesh(obj_data, str(full_path_no_ext), file_extension)
+            if isinstance(obj_data, unity.TextAsset):
+                unity.exportTextAsset(obj_data, str(full_path_no_ext), file_extension)
+            elif isinstance(obj_data, unity.Texture2D):
+                unity.exportTexture2D(obj_data, str(full_path_no_ext), file_extension)
+            elif isinstance(obj_data, unity.Mesh):
+                unity.exportMesh(obj_data, str(full_path_no_ext), file_extension)
 
             final_path = full_path_no_ext.with_suffix(file_extension)
             

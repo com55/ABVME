@@ -36,9 +36,10 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
 - **Bundle Saving** - Save modified AssetBundles back to disk (all / selected / per-bundle)
 - **Column Filtering** - Filter the asset table by Type and Source File
 - **Drag & Drop**
-  - Drop AssetBundle files onto the table to load them
-  - Drop replacement files onto the preview to replace the selected asset
-- **Open from Explorer** - Selecting multiple bundle files in Explorer and opening them loads everything into one window
+  - Drop files anywhere on the window (table, preview, and empty space all count)
+  - AssetBundles (`.bundle`, `.unity3d`, or UnityFS) open; an overlay shows Open vs Replace while dragging
+  - Other files replace the selected asset. Texture2D accepts common image types. TextAsset accepts any non-bundle file; if the suffix is not in that object's container, a confirm dialog appears
+- **Open from Explorer** - Selecting multiple bundle files and opening them loads everything into one window (launches within ~500ms are merged)
 - **Supported asset types**
   - **TextAsset** — view, export, replace
   - **Texture2D** — view, export, replace

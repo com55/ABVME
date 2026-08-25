@@ -79,7 +79,7 @@ class MenuIconHelperTests(unittest.TestCase):
         self.assertFalse(icon.isNull())
         self.assertFalse(icon.pixmap(16, 16).isNull())
 
-    def test_every_menu_item_has_an_icon(self) -> None:
+    def test_every_non_checkable_menu_item_has_an_icon(self) -> None:
         window = ABVMEMainWindow()
         missing: list[str] = []
         for menu_action in window.menuBar().actions():
@@ -87,12 +87,27 @@ class MenuIconHelperTests(unittest.TestCase):
             if menu is None:
                 continue
             for item in menu.actions():
-                if item.isSeparator():
+                if item.isSeparator() or item.isCheckable():
                     continue
                 if item.icon().isNull():
                     missing.append(item.text())
 
         self.assertEqual(missing, [])
+
+    def test_checkable_menu_items_have_no_icon(self) -> None:
+        window = ABVMEMainWindow()
+        with_icon: list[str] = []
+        for menu_action in window.menuBar().actions():
+            menu = menu_action.menu()
+            if menu is None:
+                continue
+            for item in menu.actions():
+                if item.isSeparator() or not item.isCheckable():
+                    continue
+                if not item.icon().isNull():
+                    with_icon.append(item.text())
+
+        self.assertEqual(with_icon, [])
 
 
 class FilterBoxExpansionTests(unittest.TestCase):
