@@ -12,6 +12,7 @@ from PySide6.QtCore import QMimeData
 from PySide6.QtGui import (
     QAction,
     QDragEnterEvent, QDragLeaveEvent, QDragMoveEvent, QDropEvent, QIcon,
+    QPixmap,
     QResizeEvent,
 )
 from PySide6.QtWidgets import (
@@ -37,6 +38,21 @@ from models import AssetInfo, EditResult
 
 log = logging.getLogger("ABVME")
 
+_MENU_ICON_SIZE = 16
+
+
+def _menu_icon(relative_path: str | None = None) -> QIcon:
+    """Return a menu-item icon, or a transparent placeholder if none is given.
+
+    Qt sizes the icon column from the widest icon in that menu, so every action
+    needs an icon — even items with no artwork.
+    """
+    if relative_path:
+        return QIcon(get_resource_str(relative_path))
+    pixmap = QPixmap(_MENU_ICON_SIZE, _MENU_ICON_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    return QIcon(pixmap)
+
 
 class ABVMEMainWindow(QMainWindow):
     """
@@ -54,6 +70,7 @@ class ABVMEMainWindow(QMainWindow):
         
         # Create ViewModel
         self.viewmodel = MainViewModel()
+        self._auto_fit_columns_on_load = True
         
         # Initialize UI
         self._setup_status_bar()
@@ -67,7 +84,7 @@ class ABVMEMainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
-        # self.status_bar.setStyleSheet("background-color: '#3c3c3c';")
+        self.status_bar.setStyleSheet("background-color: '#3c3c3c';")
         
         self.progress_bar = QProgressBar()
         self.status_bar.setSizeGripEnabled(False)
@@ -137,26 +154,36 @@ class ABVMEMainWindow(QMainWindow):
 
         file_menu = menu_bar.addMenu("File")
         self.open_action = QAction("Open Files...", self)
+        self.open_action.setShortcut("Ctrl+O")
+        self.open_action.setIcon(_menu_icon("assets/folder-open-regular.svg"))
         self.open_action.triggered.connect(self._on_load_button_clicked)
         file_menu.addAction(self.open_action)
 
         self.save_action = QAction("Save as...", self)
+        self.save_action.setShortcut("Ctrl+Shift+S")
+        self.save_action.setIcon(_menu_icon("assets/floppy-disk-regular.svg"))
         self.save_action.setEnabled(False)
         self.save_action.triggered.connect(self._on_save_button_clicked)
         file_menu.addAction(self.save_action)
 
         file_menu.addSeparator()
         exit_action = QAction("Exit", self)
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.setIcon(_menu_icon())
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
         asset_menu = menu_bar.addMenu("Asset")
         self.replace_action = QAction("Replace...", self)
+        self.replace_action.setShortcut("Ctrl+R")
+        self.replace_action.setIcon(_menu_icon("assets/wand-magic-sparkles-solid.svg"))
         self.replace_action.setEnabled(False)
         self.replace_action.triggered.connect(self._on_edit_button_clicked)
         asset_menu.addAction(self.replace_action)
 
         self.export_action = QAction("Export...", self)
+        self.export_action.setShortcut("Ctrl+E")
+        self.export_action.setIcon(_menu_icon("assets/file-export-solid.svg"))
         self.export_action.setEnabled(False)
         self.export_action.triggered.connect(self._on_export_button_clicked)
         asset_menu.addAction(self.export_action)
@@ -165,6 +192,7 @@ class ABVMEMainWindow(QMainWindow):
         self.show_all_action = QAction("Show all objects", self)
         self.show_all_action.setCheckable(True)
         self.show_all_action.setChecked(self.viewmodel.show_all_objects)
+        self.show_all_action.setIcon(_menu_icon())
         self.show_all_action.toggled.connect(self.viewmodel.set_show_all_objects)
         view_menu.addAction(self.show_all_action)
         
@@ -263,6 +291,7 @@ class ABVMEMainWindow(QMainWindow):
     def _on_loading_started(self, message: str):
         """Handle loading started"""
         self.setEnabled(False)
+        self._auto_fit_columns_on_load = True
         self.asset_table.clear_table()
         self.asset_table.apply_filter(clear=True)
         self.preview_panel.show_placeholder()
@@ -289,7 +318,10 @@ class ABVMEMainWindow(QMainWindow):
         
     def _on_assets_loaded(self, assets: list[AssetInfo]):
         """Handle assets loaded into table"""
-        self.asset_table.load_assets(assets)
+        self.asset_table.load_assets(
+            assets, auto_fit=self._auto_fit_columns_on_load
+        )
+        self._auto_fit_columns_on_load = False
         self.preview_panel.show_placeholder("Select an asset from the list to view its preview.")
         self.asset_table.apply_filter()
 

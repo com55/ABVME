@@ -8,10 +8,11 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView
 )
 
-_CHANGED_FOREGROUND = QColor("#7DCEA0")
-
 from views.components.custom_filter_header import FilterHeader
 from models import AssetInfo
+
+_CHANGED_FOREGROUND = QColor("#7DCEA0")
+MAX_COLUMN_WIDTH = 360
 
 
 class AssetTableWidget(QWidget):
@@ -56,7 +57,10 @@ class AssetTableWidget(QWidget):
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.table.verticalScrollBar().setSingleStep(10)
         self.table.horizontalScrollBar().setSingleStep(20)
-        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        row_height = self.table.fontMetrics().height() + 8
+        self.table.verticalHeader().setDefaultSectionSize(row_height)
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        self.table.horizontalHeader().setResizeContentsPrecision(0)
         # self.table.setStyleSheet("QTableWidget::item { padding-top: 5px; padding-bottom: 5px; }")
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(True)
@@ -103,12 +107,14 @@ class AssetTableWidget(QWidget):
         self.table.clearSelection()
         self.table.viewport().update()
         
-    def load_assets(self, assets: list[AssetInfo]):
+    def load_assets(self, assets: list[AssetInfo], *, auto_fit: bool = False):
         """
         Load assets into table
         
         Args:
             assets: List of AssetInfo objects to display
+            auto_fit: When True, size columns to contents (capped). Use only
+                on the first load after opening files, not on filter rebuilds.
         """
         # Prepare for loading
         self.table.setSortingEnabled(False)
@@ -163,8 +169,16 @@ class AssetTableWidget(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Interactive
         )
-        self.table.resizeColumnsToContents()
+        if auto_fit:
+            self._auto_fit_columns()
         self.table.setSortingEnabled(True)
+
+    def _auto_fit_columns(self) -> None:
+        self.table.resizeColumnsToContents()
+        for column in range(self.table.columnCount()):
+            width = self.table.columnWidth(column)
+            if width > MAX_COLUMN_WIDTH:
+                self.table.setColumnWidth(column, MAX_COLUMN_WIDTH)
         
     def _apply_changed_style(self, row: int, asset: AssetInfo):
         """Apply visual indicator for changed assets"""

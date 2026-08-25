@@ -51,6 +51,62 @@ class PreviewResult:
         return self.data is not None and self.status == ResultStatus.COMPLETE
 
 
+_DUMP_MAX_CHARS = 200_000
+_DUMP_MAX_ITEMS = 80
+_DUMP_MAX_DEPTH = 8
+_DUMP_MAX_STR = 400
+_DUMP_INDENT = "      "
+
+
+def format_object_dump(value: Any, *, max_chars: int = _DUMP_MAX_CHARS) -> str:
+    """Format a parsed Unity object for the Dump tab, with size limits."""
+
+    def fmt(item: Any, depth: int) -> str:
+        if depth >= _DUMP_MAX_DEPTH:
+            return "<...>"
+        if isinstance(item, bytes):
+            return "<bytes data>"
+        if isinstance(item, str):
+            if len(item) > _DUMP_MAX_STR:
+                return f'"{item[:_DUMP_MAX_STR]}..."'
+            return f'"{item}"'
+        if isinstance(item, dict):
+            if not item:
+                return "{}"
+            keys = list(item.keys())
+            extra = len(keys) - _DUMP_MAX_ITEMS
+            shown = keys[:_DUMP_MAX_ITEMS]
+            pad = _DUMP_INDENT * depth
+            next_pad = _DUMP_INDENT * (depth + 1)
+            lines = [
+                f"{next_pad}{key} = {fmt(item[key], depth + 1).lstrip()}"
+                for key in shown
+            ]
+            if extra > 0:
+                lines.append(f"{next_pad}<+{extra} more>")
+            return "{\n" + "\n".join(lines) + f"\n{pad}}}"
+        if isinstance(item, (list, tuple)):
+            brackets = ("(", ")") if isinstance(item, tuple) else ("[", "]")
+            if not item:
+                return f"{brackets[0]}{brackets[1]}"
+            extra = len(item) - _DUMP_MAX_ITEMS
+            shown = item[:_DUMP_MAX_ITEMS]
+            pad = _DUMP_INDENT * depth
+            next_pad = _DUMP_INDENT * (depth + 1)
+            lines = [
+                f"{next_pad}{fmt(entry, depth + 1).lstrip()}" for entry in shown
+            ]
+            if extra > 0:
+                lines.append(f"{next_pad}<+{extra} more>")
+            return f"{brackets[0]}\n" + "\n".join(lines) + f"\n{pad}{brackets[1]}"
+        return str(item)
+
+    text = fmt(value, 0)
+    if len(text) > max_chars:
+        return text[:max_chars] + "\n<truncated>"
+    return text
+
+
 @dataclass
 class EditResult:
     """Result of asset editing operation"""
@@ -96,6 +152,7 @@ class AssetInfo:
         self.is_exportable: bool = self.obj_type in AVAILABLE_ASSETS_FOR_EXPORT
         self._readed_data = None
         self._preview_data: Optional[PreviewResult] = None
+        self._dump_text: Optional[str] = None
 
     def _get_readed_data(self):
         """Lazy load and cache asset data"""
@@ -114,56 +171,33 @@ class AssetInfo:
             return self._preview_data
         
         data = self._get_readed_data()
-        
-        INDENT = "      "
-        
-        def fmt(value: Any, indent: int = 0) -> str:
-            """Recursively format any value to readable string"""
-            pad = INDENT * indent
-            next_pad = INDENT * (indent + 1)
-            
-            if isinstance(value, bytes):
-                # return f'"{value.decode("utf-8", errors="surrogateescape")}"'
-                return f"<bytes data>"
-            elif isinstance(value, str):
-                return f'"{value}"'
-            elif isinstance(value, dict):
-                if not value:
-                    return "{}"
-                lines = [f"{next_pad}{k} = {fmt(v, indent + 1).lstrip()}" for k, v in value.items()]
-                return "{\n" + "\n".join(lines) + f"\n{pad}}}"
-            elif isinstance(value, (list, tuple)):
-                if not value:
-                    return "()" if isinstance(value, tuple) else "[]"
-                brackets = ("(", ")") if isinstance(value, tuple) else ("[", "]")
-                lines = [f"{next_pad}{fmt(item, indent + 1).lstrip()}" for item in value]
-                return f"{brackets[0]}\n" + "\n".join(lines) + f"\n{pad}{brackets[1]}"
-            else:
-                return str(value)
-        
-        parsed_data = fmt(self._obj.parse_as_dict())
-        
+
         if isinstance(data, Texture2D) and self.obj_type == ClassIDType.Texture2D:
-            self._preview_data = PreviewResult(data=data.image, asset_type="Texture2D", parsed_data=parsed_data)
+            self._preview_data = PreviewResult(data=data.image, asset_type="Texture2D")
         elif isinstance(data, TextAsset) and self.obj_type == ClassIDType.TextAsset:
-            self._preview_data = PreviewResult(data=data.m_Script, asset_type="TextAsset", parsed_data=parsed_data)
+            self._preview_data = PreviewResult(data=data.m_Script, asset_type="TextAsset")
         elif isinstance(data, Mesh) and self.obj_type == ClassIDType.Mesh:
             self._preview_data = PreviewResult(
                 data=None,
                 asset_type="Mesh",
                 status=ResultStatus.UNSUPPORTED,
-                parsed_data=parsed_data,
                 message="Preview is unavailable",
             )
         else:
             self._preview_data = PreviewResult(
-                data=None, 
+                data=None,
                 asset_type=self.obj_type.name,
                 status=ResultStatus.UNSUPPORTED,
-                parsed_data=parsed_data,
                 message="Preview is unavailable",
             )
         return self._preview_data
+
+    def get_dump_text(self) -> str:
+        """Lazy dump of parse_as_dict(); capped so huge clips do not freeze the UI."""
+        if self._dump_text is not None:
+            return self._dump_text
+        self._dump_text = format_object_dump(self._obj.parse_as_dict())
+        return self._dump_text
 
     def edit_data(self, new_data: Image | str | BinaryIO) -> EditResult:
         """
@@ -259,6 +293,7 @@ class AssetInfo:
             )
         if result.is_success:
             self._preview_data = None
+            self._dump_text = None
         return result
     
     def export(self, output_dir: str | Path, output_name: Optional[str] = None) -> ExportResult:

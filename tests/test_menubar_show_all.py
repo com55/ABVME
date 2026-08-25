@@ -3,12 +3,12 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, QSize
 from PySide6.QtWidgets import QApplication
 
 from viewmodels.main_viewmodel import MainViewModel
 from views.components.custom_filter_header import FilterHeader
-from views.main_window import ABVMEMainWindow
+from views.main_window import ABVMEMainWindow, _menu_icon
 
 
 def _app() -> QApplication:
@@ -58,6 +58,41 @@ class MenubarShowAllActionTests(unittest.TestCase):
         self.assertEqual(action.text(), "Show all objects")
         self.assertTrue(action.isCheckable())
         self.assertEqual(action.isChecked(), window.viewmodel.show_all_objects)
+
+
+class MenuIconHelperTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = _app()
+
+    def test_blank_icon_is_16px_and_not_null(self) -> None:
+        icon = _menu_icon()
+
+        self.assertFalse(icon.isNull())
+        pixmap = icon.pixmap(16, 16)
+        self.assertFalse(pixmap.isNull())
+        self.assertEqual(pixmap.size(), QSize(16, 16))
+
+    def test_asset_path_loads_icon(self) -> None:
+        icon = _menu_icon("assets/folder-open-regular.svg")
+
+        self.assertFalse(icon.isNull())
+        self.assertFalse(icon.pixmap(16, 16).isNull())
+
+    def test_every_menu_item_has_an_icon(self) -> None:
+        window = ABVMEMainWindow()
+        missing: list[str] = []
+        for menu_action in window.menuBar().actions():
+            menu = menu_action.menu()
+            if menu is None:
+                continue
+            for item in menu.actions():
+                if item.isSeparator():
+                    continue
+                if item.icon().isNull():
+                    missing.append(item.text())
+
+        self.assertEqual(missing, [])
 
 
 class FilterBoxExpansionTests(unittest.TestCase):

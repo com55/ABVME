@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QHeaderView
 
-from views.asset_table_widget import AssetTableWidget
+from views.asset_table_widget import MAX_COLUMN_WIDTH, AssetTableWidget
 
 
 def _app() -> QApplication:
@@ -71,6 +71,44 @@ class AssetTableWidgetTests(unittest.TestCase):
                 QHeaderView.ResizeMode.Interactive,
             )
         self.assertTrue(self.widget.table.isSortingEnabled())
+
+    def test_auto_fit_caps_column_width(self) -> None:
+        long_name = "n" * 400
+        self.widget.load_assets(
+            [FakeAsset(name=long_name)],
+            auto_fit=True,
+        )
+        self.assertLessEqual(self.widget.table.columnWidth(0), MAX_COLUMN_WIDTH)
+
+    def test_auto_fit_scopes_to_visible_rows(self) -> None:
+        short_rows = [FakeAsset(name="ab") for _ in range(40)]
+        assets = short_rows + [FakeAsset(name="n" * 400)]
+        self.widget.resize(480, 180)
+        self.widget.show()
+        self.app.processEvents()
+        self.widget.load_assets(assets, auto_fit=True)
+        self.app.processEvents()
+        self.assertLess(self.widget.table.columnWidth(0), MAX_COLUMN_WIDTH)
+        self.assertEqual(
+            self.widget.table.horizontalHeader().resizeContentsPrecision(),
+            0,
+        )
+
+    def test_row_heights_use_fixed_mode(self) -> None:
+        self.widget.load_assets([FakeAsset()])
+        self.assertEqual(
+            self.widget.table.verticalHeader().sectionResizeMode(0),
+            QHeaderView.ResizeMode.Fixed,
+        )
+
+    def test_reload_without_auto_fit_keeps_column_width(self) -> None:
+        self.widget.load_assets([FakeAsset(name="a")], auto_fit=True)
+        self.widget.table.setColumnWidth(0, 42)
+        self.widget.load_assets(
+            [FakeAsset(name="very_long_asset_name_for_width")],
+            auto_fit=False,
+        )
+        self.assertEqual(self.widget.table.columnWidth(0), 42)
 
     def test_changed_row_foreground_on_all_columns(self) -> None:
         asset = FakeAsset(name="hero", is_changed=True)

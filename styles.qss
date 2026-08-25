@@ -154,13 +154,97 @@ QMenuBar {
 QMenuBar::item:selected {
     background-color: #505050;
 }
+QMenuBar::item:disabled {
+    color: #6a6a6a;
+}
 QMenu {
     background-color: #252526;
     color: #cccccc;
     border: 1px solid #454545;
+    padding: 2px;
+}
+QMenu::item {
+    padding: 2px 4px 2px 8px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background-image: url(assets/menu-gutter-line.svg);
+    background-repeat: repeat-y;
+    background-position: left;
 }
 QMenu::item:selected {
     background-color: #094771;
+    background-image: url(assets/menu-gutter-line.svg);
+    background-repeat: repeat-y;
+    background-position: left;
+    border: 1px solid #007acc;
+}
+QMenu::item:disabled {
+    color: #6a6a6a;
+}
+QMenu::item:selected:disabled {
+    color: #6a6a6a;
+    background-color: transparent;
+}
+
+QMenu::icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+}
+
+QMenu::indicator {
+    subcontrol-origin: padding;
+    subcontrol-position: left center;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    margin: 0px 6px 0px 0px;
+    border: 1px solid #8a8a8a;
+    border-radius: 2px;
+    background-color: #1e1e1e;
+}
+
+QMenu::indicator:non-exclusive:checked,
+QMenu::indicator:exclusive:checked {
+    border-color: #4fc3f7;
+    background-color: transparent;
+    image: url(assets/check-solid.svg);
+}
+QMenu::indicator:non-exclusive:unchecked:selected,
+QMenu::indicator:exclusive:unchecked:selected {
+    border-color: #cccccc;
+    background-color: transparent;
+}
+QMenu::indicator:non-exclusive:checked:selected,
+QMenu::indicator:exclusive:checked:selected {
+    border-color: #ffffff;
+    background-color: transparent;
+    image: url(assets/check-solid.svg);
+}
+
+QCheckBox {
+    spacing: 6px;
+}
+QMenu QCheckBox {
+    margin-left: 4px;
+}
+QCheckBox::indicator {
+    width: 11px;
+    height: 11px;
+    border: 1px solid #8a8a8a;
+    border-radius: 2px;
+    background-color: #1e1e1e;
+}
+QCheckBox::indicator:hover {
+    border-color: #cccccc;
+}
+QCheckBox::indicator:checked {
+    border-color: #4fc3f7;
+    background-color: #007acc;
+    image: url(assets/check-solid.svg);
+}
+QCheckBox::indicator:checked:hover {
+    border-color: #ffffff;
 }
 
 /* --- ComboBox --- */
