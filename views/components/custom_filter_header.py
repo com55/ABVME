@@ -31,7 +31,7 @@ class FilterHeader(QHeaderView):
             self.active_filters[col] = sorted_values
             return
         # If every previous value was selected, treat this as unfiltered and
-        # include newly appeared types (e.g. Show all objects).
+        # include newly appeared types (e.g. Display all assets).
         if isinstance(previous_active, list) and set(previous_active) == set(previous_unique):
             self.active_filters[col] = sorted_values
 

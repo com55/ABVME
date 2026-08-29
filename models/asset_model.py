@@ -10,13 +10,14 @@ from enum import Enum
 from functools import cache
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, BinaryIO, Optional
+from typing import TYPE_CHECKING, Any, BinaryIO, Callable, Optional
 
 from PIL import Image as PILImage
 from PIL.Image import Image
 
+from .save_options import StreamCapture
+
 if TYPE_CHECKING:
-    from UnityPy.classes import Mesh, TextAsset, Texture2D
     from UnityPy.enums import ClassIDType
     from UnityPy.files import ObjectReader
 
@@ -44,6 +45,7 @@ def _unity() -> SimpleNamespace:
 
 class ResultStatus(str, Enum):
     """Status of operation results"""
+
     COMPLETE = "COMPLETE"
     ERROR = "ERROR"
     NOT_IMPLEMENTED = "NOT_IMPLEMENTED"
@@ -53,6 +55,7 @@ class ResultStatus(str, Enum):
 @dataclass
 class PreviewResult:
     """Result of asset preview generation"""
+
     data: Image | str | None
     asset_type: str
     status: ResultStatus = ResultStatus.COMPLETE
@@ -79,6 +82,8 @@ def format_object_dump(value: Any, *, max_chars: int = _DUMP_MAX_CHARS) -> str:
         if depth >= _DUMP_MAX_DEPTH:
             return "<...>"
         if isinstance(item, bytes):
+            if not item:
+                return "None"
             return "<bytes data>"
         if isinstance(item, str):
             if len(item) > _DUMP_MAX_STR:
@@ -107,9 +112,7 @@ def format_object_dump(value: Any, *, max_chars: int = _DUMP_MAX_CHARS) -> str:
             shown = item[:_DUMP_MAX_ITEMS]
             pad = _DUMP_INDENT * depth
             next_pad = _DUMP_INDENT * (depth + 1)
-            lines = [
-                f"{next_pad}{fmt(entry, depth + 1).lstrip()}" for entry in shown
-            ]
+            lines = [f"{next_pad}{fmt(entry, depth + 1).lstrip()}" for entry in shown]
             if extra > 0:
                 lines.append(f"{next_pad}<+{extra} more>")
             return f"{brackets[0]}\n" + "\n".join(lines) + f"\n{pad}{brackets[1]}"
@@ -124,6 +127,7 @@ def format_object_dump(value: Any, *, max_chars: int = _DUMP_MAX_CHARS) -> str:
 @dataclass
 class EditResult:
     """Result of asset editing operation"""
+
     status: ResultStatus
     data: Any = None
     error: Optional[Exception] = None
@@ -138,10 +142,11 @@ class EditResult:
 @dataclass
 class ExportResult:
     """Result of asset export operation"""
+
     status: ResultStatus
     output_path: Optional[Path] = None
     message: str = ""
-    
+
     @property
     def is_success(self) -> bool:
         """Check if operation was successful"""
@@ -153,8 +158,14 @@ class AssetInfo:
     Asset information and operations wrapper
     Encapsulates UnityPy ObjectReader with high-level operations
     """
-    
-    def __init__(self, obj: ObjectReader[Any], source_path: str = ""):
+
+    def __init__(
+        self,
+        obj: ObjectReader[Any],
+        source_path: str = "",
+        register_stream_capture: Callable[[str, int, StreamCapture], None]
+        | None = None,
+    ):
         unity = _unity()
         self._obj: ObjectReader[Any] = obj
         self.name: str = self._obj.peek_name() or ""
@@ -168,15 +179,16 @@ class AssetInfo:
         self._readed_data = None
         self._preview_data: Optional[PreviewResult] = None
         self._dump_text: Optional[str] = None
+        self._register_stream_capture = register_stream_capture
 
     def _get_readed_data(self):
         """Lazy load and cache asset data"""
-        if self._readed_data: 
+        if self._readed_data:
             return self._readed_data
         else:
             self._readed_data = self._obj.read()
             return self._readed_data
-    
+
     def get_preview(self) -> PreviewResult:
         """
         Generate preview data for the asset
@@ -184,14 +196,22 @@ class AssetInfo:
         """
         if self._preview_data:
             return self._preview_data
-        
+
         data = self._get_readed_data()
         unity = _unity()
 
-        if isinstance(data, unity.Texture2D) and self.obj_type == unity.ClassIDType.Texture2D:
+        if (
+            isinstance(data, unity.Texture2D)
+            and self.obj_type == unity.ClassIDType.Texture2D
+        ):
             self._preview_data = PreviewResult(data=data.image, asset_type="Texture2D")
-        elif isinstance(data, unity.TextAsset) and self.obj_type == unity.ClassIDType.TextAsset:
-            self._preview_data = PreviewResult(data=data.m_Script, asset_type="TextAsset")
+        elif (
+            isinstance(data, unity.TextAsset)
+            and self.obj_type == unity.ClassIDType.TextAsset
+        ):
+            self._preview_data = PreviewResult(
+                data=data.m_Script, asset_type="TextAsset"
+            )
         elif isinstance(data, unity.Mesh) and self.obj_type == unity.ClassIDType.Mesh:
             self._preview_data = PreviewResult(
                 data=None,
@@ -220,15 +240,16 @@ class AssetInfo:
         Edit asset data with new content
         Supports Texture2D and TextAsset editing
         """
-        data = self._get_readed_data()
         unity = _unity()
         if not self.is_editable:
             return EditResult(
                 status=ResultStatus.UNSUPPORTED,
-                message=f"Replace is not supported for {self.obj_type.name}"
+                message=f"Replace is not supported for {self.obj_type.name}",
             )
 
-        if isinstance(data, unity.Texture2D):
+        if self.obj_type == unity.ClassIDType.Texture2D:
+            self._readed_data = None
+            data = self._obj.read()
             try:
                 image_data = None
                 if isinstance(new_data, Image):
@@ -244,76 +265,123 @@ class AssetInfo:
                         status=ResultStatus.ERROR,
                         data=data.image,
                         error=TypeError("Unsupported data type for Texture2D"),
-                        message="Unsupported data type for Texture2D editing."
+                        message="Unsupported data type for Texture2D editing.",
                     )
 
                 if image_data is None:
                     raise ValueError("Loaded image data is empty.")
 
+                stream = getattr(data, "m_StreamData", None)
+                stream_path = getattr(stream, "path", "") if stream is not None else ""
+                capture = None
+                if stream_path and self.source_path and self._register_stream_capture:
+                    capture = StreamCapture(
+                        path=str(stream_path),
+                        offset=int(getattr(stream, "offset", 0) or 0),
+                        size=int(getattr(stream, "size", 0) or 0),
+                    )
+
                 data.set_image(image_data)
                 data.save()
-                self.is_changed = True
-                result = EditResult(
-                    status=ResultStatus.COMPLETE, 
-                    data=data.image,
-                    message="Texture2D replaced successfully."
-                )
-            except Exception as e:
-                return EditResult(
-                    status=ResultStatus.ERROR, 
-                    data=data.image,
-                    error=e,
-                    message=f"Failed to save texture: {str(e)}"
-                )
-                
-        elif isinstance(data, unity.TextAsset):
-            try:
-                if isinstance(new_data, str):
-                    if Path(new_data).exists():
-                        new_script_data = Path(new_data).read_bytes().decode("utf-8", errors="surrogateescape")
-                    else:
-                        new_script_data = new_data
-                elif isinstance(new_data, BinaryIO):
-                    new_script_data = new_data.read().decode("utf-8", errors="surrogateescape")
-                else:
-                    result = EditResult(
-                        status=ResultStatus.ERROR, 
-                        data=data.m_Script, 
-                        error=ValueError("Unsupported data type"),
-                        message="Unsupported data type"
+                raw = getattr(data, "image_data", b"") or b""
+                try:
+                    image_bytes = bytes(raw)
+                except (TypeError, ValueError):
+                    image_bytes = b""
+                if capture is not None:
+                    capture = StreamCapture(
+                        path=capture.path,
+                        offset=capture.offset,
+                        size=capture.size,
+                        image_bytes=image_bytes,
                     )
-                data.m_Script = new_script_data
-                data.save()
+                    self._register_stream_capture(
+                        self.source_path,
+                        int(self._obj.path_id),
+                        capture,
+                    )
+                elif image_bytes and self.source_path and self._register_stream_capture:
+                    self._register_stream_capture(
+                        self.source_path,
+                        int(self._obj.path_id),
+                        StreamCapture(
+                            path="",
+                            offset=0,
+                            size=0,
+                            image_bytes=image_bytes,
+                        ),
+                    )
+                self._readed_data = data
                 self.is_changed = True
                 result = EditResult(
-                    status=ResultStatus.COMPLETE, 
-                    data=data.m_Script,
-                    message="TextAsset replaced successfully."
+                    status=ResultStatus.COMPLETE,
+                    data=data.image,
+                    message="Texture2D replaced successfully.",
                 )
             except Exception as e:
                 return EditResult(
-                    status=ResultStatus.ERROR, 
-                    data=data.m_Script, 
+                    status=ResultStatus.ERROR,
+                    data=data.image,
                     error=e,
-                    message=f"Script error: {str(e)}"
+                    message=f"Failed to save texture: {str(e)}",
                 )
-                
-        elif isinstance(data, unity.Mesh):
-            return EditResult(
-                status=ResultStatus.NOT_IMPLEMENTED, 
-                message="Mesh editing is coming soon!"
-            )
         else:
-            return EditResult(
-                status=ResultStatus.UNSUPPORTED, 
-                message=f"Replace is not supported for {type(data).__name__}"
-            )
+            data = self._get_readed_data()
+            if isinstance(data, unity.TextAsset):
+                try:
+                    if isinstance(new_data, str):
+                        if Path(new_data).exists():
+                            new_script_data = (
+                                Path(new_data)
+                                .read_bytes()
+                                .decode("utf-8", errors="surrogateescape")
+                            )
+                        else:
+                            new_script_data = new_data
+                    elif isinstance(new_data, BinaryIO):
+                        new_script_data = new_data.read().decode(
+                            "utf-8", errors="surrogateescape"
+                        )
+                    else:
+                        result = EditResult(
+                            status=ResultStatus.ERROR,
+                            data=data.m_Script,
+                            error=ValueError("Unsupported data type"),
+                            message="Unsupported data type",
+                        )
+                    data.m_Script = new_script_data
+                    data.save()
+                    self.is_changed = True
+                    result = EditResult(
+                        status=ResultStatus.COMPLETE,
+                        data=data.m_Script,
+                        message="TextAsset replaced successfully.",
+                    )
+                except Exception as e:
+                    return EditResult(
+                        status=ResultStatus.ERROR,
+                        data=data.m_Script,
+                        error=e,
+                        message=f"Script error: {str(e)}",
+                    )
+            elif isinstance(data, unity.Mesh):
+                return EditResult(
+                    status=ResultStatus.NOT_IMPLEMENTED,
+                    message="Mesh editing is coming soon!",
+                )
+            else:
+                return EditResult(
+                    status=ResultStatus.UNSUPPORTED,
+                    message=f"Replace is not supported for {type(data).__name__}",
+                )
         if result.is_success:
             self._preview_data = None
             self._dump_text = None
         return result
-    
-    def export(self, output_dir: str | Path, output_name: Optional[str] = None) -> ExportResult:
+
+    def export(
+        self, output_dir: str | Path, output_name: Optional[str] = None
+    ) -> ExportResult:
         """
         Export asset to file system
         Supports Texture2D, TextAsset, and Mesh export
@@ -323,15 +391,15 @@ class AssetInfo:
         if not isinstance(obj_data, (unity.TextAsset, unity.Texture2D, unity.Mesh)):
             return ExportResult(
                 status=ResultStatus.UNSUPPORTED,
-                message=f"Export not supported for type: {type(obj_data).__name__}"
+                message=f"Export not supported for type: {type(obj_data).__name__}",
             )
 
         try:
             output_dir = Path(output_dir).resolve()
             output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             need_to_add_path_id = False
-            
+
             if output_name:
                 full_name = output_name
             elif self.container:
@@ -341,12 +409,12 @@ class AssetInfo:
                 need_to_add_path_id = True
 
             # Split at first dot only
-            parts = full_name.split('.') 
-            
+            parts = full_name.split(".")
+
             file_name = parts[0]
             if need_to_add_path_id:
                 file_name += "_" + self.path_id
-            
+
             file_extension = ""
             if len(parts) > 1:
                 first_suffix = parts[1]
@@ -363,17 +431,14 @@ class AssetInfo:
                 unity.exportMesh(obj_data, str(full_path_no_ext), file_extension)
 
             final_path = full_path_no_ext.with_suffix(file_extension)
-            
+
             return ExportResult(
                 status=ResultStatus.COMPLETE,
                 output_path=final_path,
-                message=f"Exported: {file_name}{file_extension}"
+                message=f"Exported: {file_name}{file_extension}",
             )
 
         except Exception as e:
             return ExportResult(
-                status=ResultStatus.ERROR,
-                message=f"Export failed: {str(e)}"
+                status=ResultStatus.ERROR, message=f"Export failed: {str(e)}"
             )
-
-

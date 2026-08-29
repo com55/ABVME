@@ -16,6 +16,15 @@ class FormatObjectDumpTests(unittest.TestCase):
         self.assertLessEqual(len(text), 1020)
         self.assertTrue(text.endswith("<truncated>") or "<truncated>" in text)
 
+    def test_empty_bytes_dump_as_none(self) -> None:
+        text = format_object_dump({"image_data": b""})
+        self.assertIn("image_data = None", text)
+        self.assertNotIn("<bytes data>", text)
+
+    def test_nonempty_bytes_stay_placeholder(self) -> None:
+        text = format_object_dump({"image_data": b"ABC"})
+        self.assertIn("image_data = <bytes data>", text)
+
 
 if __name__ == "__main__":
     unittest.main()

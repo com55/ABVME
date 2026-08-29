@@ -55,9 +55,29 @@ class MenubarShowAllActionTests(unittest.TestCase):
         window = ABVMEMainWindow()
         action = window.show_all_action
 
-        self.assertEqual(action.text(), "Show all objects")
+        self.assertEqual(action.text(), "&Display all assets")
         self.assertTrue(action.isCheckable())
         self.assertEqual(action.isChecked(), window.viewmodel.show_all_objects)
+
+    def test_top_level_menus_use_mnemonics_and_renames(self) -> None:
+        window = ABVMEMainWindow()
+        titles = [action.text() for action in window.menuBar().actions()]
+
+        self.assertEqual(titles, ["&File", "&Asset", "&Options"])
+
+    def test_exit_action_uses_x_mnemonic(self) -> None:
+        window = ABVMEMainWindow()
+        menus = window.menuBar().actions()
+        file_menu = menus[0].menu()
+        self.assertIsNotNone(file_menu)
+        exit_texts = [
+            item.text()
+            for item in file_menu.actions()
+            if not item.isSeparator() and item.text().replace("&", "") == "Exit"
+        ]
+
+        self.assertEqual(exit_texts, ["E&xit"])
+
 
 
 class MenuIconHelperTests(unittest.TestCase):

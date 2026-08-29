@@ -34,6 +34,7 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
 - **Asset Export** - Export single or multiple selected assets
 - **Asset Modification** - Replace asset data with external files
 - **Bundle Saving** - Save modified AssetBundles back to disk (all / selected / per-bundle)
+- **Save / Options** - Compression (including LZ4HC), resource files (Inline / Orphan cleanup / Resource patch), and CRC (Off / On / Auto for Windows)
 - **Column Filtering** - Filter the asset table by Type and Source File
 - **Drag & Drop**
   - Drop files anywhere on the window (table, preview, and empty space all count)
@@ -46,7 +47,7 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
 
 ## TODO
 - [ ] Mesh support
-- [ ] CRC Corrector - Make CRC32 the same as the original file after modification
+- [x] CRC Corrector - Make CRC32 the same as the original file after modification
 - [ ] Bundles Migration - Transfer modifications to new base files
 - [ ] Atlas Image Unpacker
 - [ ] [SpineSkeletonDataConverter](https://github.com/wang606/SpineSkeletonDataConverter) integration (add-on)

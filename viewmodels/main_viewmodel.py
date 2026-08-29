@@ -5,11 +5,16 @@ Presentation logic and state management for the main window
 
 import logging
 from pathlib import Path
-from typing import Optional, Literal, cast
+from typing import Optional
 
 from PySide6.QtCore import QObject, QSettings, Signal
 
 from models import ABVMECore, AssetInfo, EditResult, ExportResult
+from models.save_options import (
+    parse_crc_mode,
+    parse_packer,
+    parse_resource_patch_mode,
+)
 from services import LoaderWorker, EditWorker, SaveWorker
 
 
@@ -37,6 +42,7 @@ class MainViewModel(QObject):
     save_started = Signal(str)  # Status message
     save_progress = Signal(int, int, str)  # current, total, filename
     save_finished = Signal(bool, str)  # success, message
+    save_warning = Signal(str)
     
     selection_changed = Signal(int)  # Number of selected assets
     
@@ -48,6 +54,11 @@ class MainViewModel(QObject):
         self.show_all_objects = bool(
             self._settings.value("show_all_objects", False, type=bool)
         )
+        self.packer = parse_packer(self._settings.value("packer", "original"))
+        self.resource_patch_mode = parse_resource_patch_mode(
+            self._settings.value("resource_patch_mode", "resource_patch")
+        )
+        self.crc_mode = parse_crc_mode(self._settings.value("crc_mode", "auto"))
         self.core: Optional[ABVMECore] = None
         self.assets: list[AssetInfo] = []
         self.selected_assets: list[AssetInfo] = []
@@ -102,6 +113,37 @@ class MainViewModel(QObject):
             return
         self.assets = self.core.get_available_assets(show_all=enabled)
         self.assets_loaded.emit(self.assets)
+
+    def set_packer(self, packer: str) -> None:
+        self.persist_save_options(
+            packer, self.resource_patch_mode, self.crc_mode
+        )
+
+    def set_resource_patch_mode(self, resource_patch_mode: str) -> None:
+        self.persist_save_options(
+            self.packer, resource_patch_mode, self.crc_mode
+        )
+
+    def set_crc_mode(self, crc_mode: str) -> None:
+        self.persist_save_options(
+            self.packer, self.resource_patch_mode, crc_mode
+        )
+
+    def persist_save_options(
+        self,
+        packer: str | None,
+        resource_patch_mode: str | None,
+        crc_mode: str | None,
+    ) -> None:
+        if packer is not None:
+            self.packer = parse_packer(packer)
+        if resource_patch_mode is not None:
+            self.resource_patch_mode = parse_resource_patch_mode(resource_patch_mode)
+        if crc_mode is not None:
+            self.crc_mode = parse_crc_mode(crc_mode)
+        self._settings.setValue("packer", self.packer)
+        self._settings.setValue("resource_patch_mode", self.resource_patch_mode.value)
+        self._settings.setValue("crc_mode", self.crc_mode.value)
         
     def update_selection(self, selected_assets: list[AssetInfo]):
         """
@@ -118,6 +160,25 @@ class MainViewModel(QObject):
         if len(self.selected_assets) == 1:
             return self.selected_assets[0]
         return None
+
+    def get_dialog_start_directory(self) -> str:
+        """Folder of the selected or first loaded bundle, else cwd."""
+        candidates: list[str] = []
+        selected = self.get_single_selected_asset()
+        if selected is not None:
+            candidates.append(getattr(selected, "source_path", "") or "")
+        for asset in self.assets:
+            candidates.append(getattr(asset, "source_path", "") or "")
+        seen: set[str] = set()
+        for path_str in candidates:
+            if not path_str or path_str in seen:
+                continue
+            seen.add(path_str)
+            folder = Path(path_str).parent
+            if str(folder) in (".", ""):
+                continue
+            return str(folder)
+        return str(Path.cwd())
         
     def can_edit_asset(self) -> bool:
         """Check if editing is possible (exactly one asset selected)"""
@@ -305,13 +366,21 @@ class MainViewModel(QObject):
                 return True
         return False
         
-    def save_all_files(self, output_dir: Path, packer: Literal["none", "lz4", "lzma", "original"] = "none"):
+    def save_all_files(
+        self,
+        output_dir: Path,
+        packer: str | None = None,
+        resource_patch_mode: str | None = None,
+        crc_mode: str | None = None,
+    ):
         """
         Save all changed bundle files
         
         Args:
             output_dir: Output directory path
-            packer: Compression method (lz4, lzma, or original)
+            packer: Compression method (none, lz4, lz4hc, lzma, or original)
+            resource_patch_mode: Resource-file mode
+            crc_mode: CRC mode
         """
         if not self.core:
             self.status_message.emit("No files loaded", logging.WARNING)
@@ -325,20 +394,28 @@ class MainViewModel(QObject):
             self.status_message.emit("No changed files to save", logging.INFO)
             return False
 
+        self.persist_save_options(packer, resource_patch_mode, crc_mode)
+
         self.save_started.emit("Saving all changed files...")
-        self.save_worker = SaveWorker(self.core, output_dir, packer)
-        self.save_worker.progress.connect(self._on_save_progress)
-        self.save_worker.finished.connect(self._on_save_finished)
-        self.save_worker.error.connect(self._on_save_error)
-        self.save_worker.start()
+        self._start_save_worker(
+            SaveWorker(
+                self.core,
+                output_dir,
+                self.packer,
+                resource_patch_mode=self.resource_patch_mode,
+                crc_mode=self.crc_mode,
+            )
+        )
         return True
         
     def save_selected_file(
         self, 
         filepath: str, 
         output_dir: Path, 
-        packer: Literal["none", "lz4", "lzma", "original"] = "none", 
-        output_filename: Optional[str] = None
+        packer: str | None = None,
+        output_filename: Optional[str] = None,
+        resource_patch_mode: str | None = None,
+        crc_mode: str | None = None,
     ):
         """
         Save a specific bundle file
@@ -346,8 +423,10 @@ class MainViewModel(QObject):
         Args:
             filepath: Path of file to save
             output_dir: Output directory path
-            packer: Compression method (lz4, lzma, or original)
+            packer: Compression method (none, lz4, lz4hc, lzma, or original)
             output_filename: Optional custom output filename
+            resource_patch_mode: Resource-file mode
+            crc_mode: CRC mode
         """
         if not self.core:
             self.status_message.emit("No files loaded", logging.WARNING)
@@ -357,23 +436,31 @@ class MainViewModel(QObject):
             self.status_message.emit("Another save is currently running.", logging.WARNING)
             return False
 
-        # Use custom filename if provided, otherwise use original
+        self.persist_save_options(packer, resource_patch_mode, crc_mode)
+
         display_name = output_filename or Path(filepath).name
         self.save_started.emit(f"Saving {display_name}...")
         
-        # Create SaveWorker with custom output filename
-        self.save_worker = SaveWorker(self.core, output_dir, packer, filepath, output_filename)
-        self.save_worker.progress.connect(self._on_save_progress)
-        self.save_worker.finished.connect(self._on_save_finished)
-        self.save_worker.error.connect(self._on_save_error)
-        self.save_worker.start()
+        self._start_save_worker(
+            SaveWorker(
+                self.core,
+                output_dir,
+                self.packer,
+                filepath,
+                output_filename,
+                resource_patch_mode=self.resource_patch_mode,
+                crc_mode=self.crc_mode,
+            )
+        )
         return True
         
     def save_multiple_files(
         self, 
         filepaths: list[str], 
         output_dir: Path, 
-        packer: Literal["none", "lz4", "lzma", "original"] = "none"
+        packer: str | None = None,
+        resource_patch_mode: str | None = None,
+        crc_mode: str | None = None,
     ):
         """
         Save multiple selected bundle files
@@ -381,7 +468,9 @@ class MainViewModel(QObject):
         Args:
             filepaths: List of file paths to save
             output_dir: Output directory path
-            packer: Compression method (none, lz4, lzma, or original)
+            packer: Compression method (none, lz4, lz4hc, lzma, or original)
+            resource_patch_mode: Resource-file mode
+            crc_mode: CRC mode
         """
         if not self.core:
             self.status_message.emit("No files loaded", logging.WARNING)
@@ -395,16 +484,29 @@ class MainViewModel(QObject):
             self.status_message.emit("No files selected", logging.INFO)
             return False
 
-        
+        self.persist_save_options(packer, resource_patch_mode, crc_mode)
+
         self.save_started.emit(f"Saving {len(filepaths)} selected file(s)...")
         
-        # Create SaveWorker with specific_files list
-        self.save_worker = SaveWorker(self.core, output_dir, packer, specific_files=filepaths)
-        self.save_worker.progress.connect(self._on_save_progress)
-        self.save_worker.finished.connect(self._on_save_finished)
-        self.save_worker.error.connect(self._on_save_error)
-        self.save_worker.start()
+        self._start_save_worker(
+            SaveWorker(
+                self.core,
+                output_dir,
+                self.packer,
+                specific_files=filepaths,
+                resource_patch_mode=self.resource_patch_mode,
+                crc_mode=self.crc_mode,
+            )
+        )
         return True
+
+    def _start_save_worker(self, worker: SaveWorker) -> None:
+        self.save_worker = worker
+        worker.progress.connect(self._on_save_progress)
+        worker.finished.connect(self._on_save_finished)
+        worker.error.connect(self._on_save_error)
+        worker.warning.connect(self.save_warning)
+        worker.start()
         
     def _on_save_progress(self, current: int, total: int, filename: str):
         """Handle save progress updates"""
