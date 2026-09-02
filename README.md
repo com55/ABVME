@@ -34,7 +34,7 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
 - **Asset Export** - Export single or multiple selected assets
 - **Asset Modification** - Replace asset data with external files
 - **Bundle Saving** - Save modified AssetBundles back to disk (all / selected / per-bundle)
-- **Save / Options** - Compression (including LZ4HC), resource files (Inline / Orphan cleanup / Resource patch), and CRC (Off / On / Auto for Windows)
+- **Save / Options** - Compression (including LZ4HC), resource patch method (Inline / Orphan cleanup / Rebuild .resS), and CRC correction (Off / On / Auto for Windows)
 - **Column Filtering** - Filter the asset table by Type and Source File
 - **Drag & Drop**
   - Drop files anywhere on the window (table, preview, and empty space all count)

@@ -5,19 +5,22 @@ from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QApplication, QStyle, QStyleOptionViewItem
 
 from models.save_options import (
     CRC_LABELS,
     PACKER_LABELS,
     RESOURCE_LABELS,
+    SAVE_OPTION_HELP,
     CrcMode,
     ResourcePatchMode,
     StreamCapture,
     parse_crc_mode,
     parse_packer,
     parse_resource_patch_mode,
+    parse_show_only_changed_files,
 )
 from viewmodels.main_viewmodel import MainViewModel
 from views.main_window import ABVMEMainWindow
@@ -50,8 +53,8 @@ def _options_menu(window: ABVMEMainWindow):
 def _submenu(window: ABVMEMainWindow, name: str):
     stored = {
         "Compression": getattr(window, "_compression_menu", None),
-        "Resource files": getattr(window, "_resource_menu", None),
-        "CRC": getattr(window, "_crc_menu", None),
+        "Resource Patch Method": getattr(window, "_resource_menu", None),
+        "CRC Correction": getattr(window, "_crc_menu", None),
     }
     menu = stored.get(name)
     if menu is not None:
@@ -89,11 +92,26 @@ class SaveOptionsModelTests(unittest.TestCase):
         )
         self.assertEqual(parse_crc_mode("on"), CrcMode.ON)
         self.assertEqual(parse_crc_mode("maybe"), CrcMode.AUTO)
+        self.assertFalse(parse_show_only_changed_files(False))
+        self.assertFalse(parse_show_only_changed_files(0))
+        self.assertFalse(parse_show_only_changed_files("0"))
+        self.assertFalse(parse_show_only_changed_files("false"))
+        self.assertFalse(parse_show_only_changed_files("FALSE"))
+        self.assertTrue(parse_show_only_changed_files(True))
+        self.assertTrue(parse_show_only_changed_files(1))
+        self.assertTrue(parse_show_only_changed_files("true"))
+        self.assertTrue(parse_show_only_changed_files(None))
+        self.assertTrue(parse_show_only_changed_files(""))
+        self.assertTrue(parse_show_only_changed_files("maybe"))
 
     def test_label_maps_include_lz4hc(self) -> None:
         self.assertEqual(PACKER_LABELS["LZ4HC"], "lz4hc")
-        self.assertEqual(RESOURCE_LABELS["Resource patch"], "resource_patch")
+        self.assertEqual(RESOURCE_LABELS["Rebuild .resS"], "resource_patch")
         self.assertEqual(CRC_LABELS["Auto"], "auto")
+        self.assertIn("compress", SAVE_OPTION_HELP["Compression Method"].lower())
+        self.assertIn(".resS", SAVE_OPTION_HELP["Resource Patch Method"])
+        self.assertIn("CRC32", SAVE_OPTION_HELP["CRC Correction"])
+        self.assertIn("BuildTarget", SAVE_OPTION_HELP["CRC Correction"])
 
 
 class SaveOptionsViewModelTests(unittest.TestCase):
@@ -113,6 +131,28 @@ class SaveOptionsViewModelTests(unittest.TestCase):
         self.assertEqual(self.vm.packer, "original")
         self.assertEqual(self.vm.resource_patch_mode, "resource_patch")
         self.assertEqual(self.vm.crc_mode, "auto")
+        self.assertTrue(self.vm.show_only_changed_files)
+
+    def test_set_show_only_changed_files_writes_one_key(self) -> None:
+        self.vm.set_show_only_changed_files(False)
+        self.assertFalse(self.vm.show_only_changed_files)
+        self.assertFalse(
+            parse_show_only_changed_files(
+                self.settings.value("show_only_changed_files")
+            )
+        )
+        self.assertEqual(self.settings.value("packer", "original"), "original")
+
+    def test_set_show_only_changed_files_does_not_reload_assets(self) -> None:
+        received: list = []
+        self.vm.assets_loaded.connect(received.append)
+        self.vm.set_show_only_changed_files(False)
+        self.assertEqual(received, [])
+
+    def test_garbage_show_only_changed_files_defaults_true(self) -> None:
+        self.settings.setValue("show_only_changed_files", "maybe")
+        vm = MainViewModel(settings=self.settings)
+        self.assertTrue(vm.show_only_changed_files)
 
     def test_setters_write_settings_keys(self) -> None:
         self.vm.set_packer("lz4hc")
@@ -210,8 +250,8 @@ class OptionsMenuSaveSettingsTests(unittest.TestCase):
     def test_options_exclusive_icon_less_groups_write_settings(self) -> None:
         expected = {
             "Compression": ["None", "LZ4", "LZ4HC", "LZMA", "Original"],
-            "Resource files": ["Inline", "Orphan cleanup", "Resource patch"],
-            "CRC": ["Off", "On", "Auto"],
+            "Resource Patch Method": ["Inline", "Orphan cleanup", "Rebuild .resS"],
+            "CRC Correction": ["Off", "On", "Auto"],
         }
         for title, labels in expected.items():
             menu = _submenu(self.window, title)
@@ -235,9 +275,9 @@ class OptionsMenuSaveSettingsTests(unittest.TestCase):
         )
         self.assertFalse(_item(_submenu(self.window, "Compression"), "LZ4").isChecked())
 
-        _item(_submenu(self.window, "Resource files"), "Inline").trigger()
+        _item(_submenu(self.window, "Resource Patch Method"), "Inline").trigger()
         self.assertEqual(self.settings.value("resource_patch_mode"), "inline")
-        _item(_submenu(self.window, "CRC"), "On").trigger()
+        _item(_submenu(self.window, "CRC Correction"), "On").trigger()
         self.assertEqual(self.settings.value("crc_mode"), "on")
 
     def test_about_to_show_rebuilds_checks_from_viewmodel(self) -> None:
@@ -249,17 +289,21 @@ class OptionsMenuSaveSettingsTests(unittest.TestCase):
 
         self.assertTrue(_item(_submenu(self.window, "Compression"), "LZMA").isChecked())
         self.assertTrue(
-            _item(_submenu(self.window, "Resource files"), "Orphan cleanup").isChecked()
+            _item(
+                _submenu(self.window, "Resource Patch Method"), "Orphan cleanup"
+            ).isChecked()
         )
-        self.assertTrue(_item(_submenu(self.window, "CRC"), "Off").isChecked())
+        self.assertTrue(
+            _item(_submenu(self.window, "CRC Correction"), "Off").isChecked()
+        )
 
     def test_checkable_options_actions_are_icon_less(self) -> None:
         with_icon: list[str] = []
         menus = [
             _options_menu(self.window),
             _submenu(self.window, "Compression"),
-            _submenu(self.window, "Resource files"),
-            _submenu(self.window, "CRC"),
+            _submenu(self.window, "Resource Patch Method"),
+            _submenu(self.window, "CRC Correction"),
         ]
         for menu in menus:
             for item in menu.actions():
@@ -352,6 +396,205 @@ class SaveDialogScratchTests(unittest.TestCase):
 
         self.assertEqual(received, [("out", "lz4hc", "inline", "on")])
         self.assertEqual(self.settings.value("crc_mode", "auto"), "auto")
+
+
+def _bundle(*, changed: bool) -> MagicMock:
+    obj = MagicMock()
+    obj.is_changed = changed
+    return obj
+
+
+class SaveDialogFilterTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = _app()
+
+    def setUp(self) -> None:
+        self.settings = QSettings("ABVMETest", "ABVME")
+        self.settings.clear()
+        self.vm = MainViewModel(settings=self.settings)
+
+    def tearDown(self) -> None:
+        self.settings.clear()
+
+    def _attach(self, files: dict[str, bool]) -> None:
+        core = MagicMock()
+        core._env.files = {path: _bundle(changed=flag) for path, flag in files.items()}
+        self.vm.core = core
+
+    def _assert_placeholder(self, item, text: str) -> None:
+        self.assertEqual(item.text(), text)
+        self.assertFalse(item.data(Qt.ItemDataRole.UserRole))
+        flags = item.flags()
+        self.assertFalse(bool(flags & Qt.ItemFlag.ItemIsSelectable))
+        self.assertTrue(bool(flags & Qt.ItemFlag.ItemIsEnabled))
+
+    def test_default_filter_shows_only_changed_with_leading_star(self) -> None:
+        self._attach({"hero.bundle": True, "other.bundle": False})
+        dialog = SaveDialog(self.vm)
+        self.addCleanup(dialog.close)
+
+        self.assertTrue(dialog.show_only_changed_checkbox.isChecked())
+        self.assertEqual(dialog.file_list.count(), 1)
+        item = dialog.file_list.item(0)
+        self.assertIsNotNone(item)
+        assert item is not None
+        self.assertEqual(item.text(), "* hero.bundle")
+        self.assertEqual(item.foreground().color(), QColor("#7DCEA0"))
+        self.assertEqual(item.toolTip(), "hero.bundle (modified)")
+        self.assertTrue(dialog.save_all_btn.isEnabled())
+
+    def test_option_headings_and_info_tooltips(self) -> None:
+        dialog = SaveDialog(self.vm)
+        self.addCleanup(dialog.close)
+        self.assertEqual(dialog.compression_heading.text(), "Compression Method")
+        self.assertEqual(dialog.resource_heading.text(), "Resource Patch Method")
+        self.assertEqual(dialog.crc_heading.text(), "CRC Correction")
+        self.assertEqual(
+            dialog.compression_help.toolTip(), SAVE_OPTION_HELP["Compression Method"]
+        )
+        self.assertEqual(
+            dialog.resource_help.toolTip(), SAVE_OPTION_HELP["Resource Patch Method"]
+        )
+        self.assertEqual(dialog.crc_help.toolTip(), SAVE_OPTION_HELP["CRC Correction"])
+        self.assertEqual(dialog.compression_help.text(), "ⓘ")
+        self.assertEqual(dialog.resource_combo.itemText(2), "Rebuild .resS")
+
+    def test_click_uncheck_shows_unchanged_and_survives_reject(self) -> None:
+        self._attach({"hero.bundle": True, "other.bundle": False})
+        dialog = SaveDialog(self.vm)
+        self.addCleanup(dialog.close)
+
+        dialog.show_only_changed_checkbox.click()
+        self.assertFalse(dialog.show_only_changed_checkbox.isChecked())
+        texts = [
+            dialog.file_list.item(i).text() for i in range(dialog.file_list.count())
+        ]
+        self.assertEqual(texts, ["* hero.bundle", "other.bundle"])
+        unchanged = dialog.file_list.item(1)
+        self.assertIsNotNone(unchanged)
+        assert unchanged is not None
+        self.assertIsNone(unchanged.data(Qt.ItemDataRole.ForegroundRole))
+        self.assertEqual(unchanged.toolTip(), "other.bundle")
+        changed = dialog.file_list.item(0)
+        self.assertIsNotNone(changed)
+        assert changed is not None
+        self.assertEqual(changed.foreground().color(), QColor("#7DCEA0"))
+
+        dialog.reject()
+        self.assertFalse(
+            parse_show_only_changed_files(
+                self.settings.value("show_only_changed_files")
+            )
+        )
+
+        again = SaveDialog(self.vm)
+        self.addCleanup(again.close)
+        self.assertFalse(again.show_only_changed_checkbox.isChecked())
+        self.assertEqual(again.file_list.count(), 2)
+
+    def test_all_unchanged_shows_no_changed_files_placeholder(self) -> None:
+        self._attach({"hero.bundle": False})
+        dialog = SaveDialog(self.vm)
+        self.addCleanup(dialog.close)
+
+        self.assertEqual(dialog.file_list.count(), 1)
+        item = dialog.file_list.item(0)
+        self.assertIsNotNone(item)
+        assert item is not None
+        self._assert_placeholder(item, "No changed files")
+        self.assertFalse(dialog.save_selected_btn.isEnabled())
+        self.assertFalse(dialog.save_all_btn.isEnabled())
+
+    def test_no_files_loaded_even_when_filter_on(self) -> None:
+        dialog = SaveDialog(self.vm)
+        self.addCleanup(dialog.close)
+
+        self.assertEqual(dialog.file_list.count(), 1)
+        item = dialog.file_list.item(0)
+        self.assertIsNotNone(item)
+        assert item is not None
+        self._assert_placeholder(item, "No files loaded")
+
+    def test_placeholder_init_style_option_clears_mouse_over(self) -> None:
+        dialog = SaveDialog(self.vm)
+        self.addCleanup(dialog.close)
+        index = dialog.file_list.model().index(0, 0)
+        option = QStyleOptionViewItem()
+        option.initFrom(dialog.file_list)
+        option.state = (
+            QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_MouseOver
+        )
+        delegate = dialog.file_list.itemDelegate()
+        delegate.initStyleOption(option, index)
+        self.assertFalse(bool(option.state & QStyle.StateFlag.State_MouseOver))
+
+    def test_file_row_init_style_option_keeps_mouse_over(self) -> None:
+        self._attach({"hero.bundle": True})
+        dialog = SaveDialog(self.vm)
+        self.addCleanup(dialog.close)
+        index = dialog.file_list.model().index(0, 0)
+        option = QStyleOptionViewItem()
+        option.initFrom(dialog.file_list)
+        option.state = (
+            QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_MouseOver
+        )
+        delegate = dialog.file_list.itemDelegate()
+        delegate.initStyleOption(option, index)
+        self.assertTrue(bool(option.state & QStyle.StateFlag.State_MouseOver))
+
+    @patch("views.save_dialog.QFileDialog.getExistingDirectory", return_value="out")
+    def test_save_all_signal_stays_four_tuple_with_filter(
+        self, _get_dir: MagicMock
+    ) -> None:
+        self._attach({"hero.bundle": True, "other.bundle": False})
+        dialog = SaveDialog(self.vm)
+        self.addCleanup(dialog.close)
+        received: list[tuple] = []
+        dialog.save_all_requested.connect(lambda *args: received.append(args))
+
+        self.assertEqual(dialog.file_list.count(), 1)
+        dialog._on_save_all_clicked()
+
+        self.assertEqual(received, [("out", "original", "resource_patch", "auto")])
+        self.assertTrue(self.vm.has_changed_files())
+
+    def test_disclosure_is_sibling_and_starts_collapsed(self) -> None:
+        dialog = SaveDialog(self.vm)
+        self.addCleanup(dialog.close)
+        dialog.show()
+        QApplication.processEvents()
+
+        self.assertIs(dialog.save_options_btn.parent(), dialog)
+        self.assertIsNot(dialog.save_options_btn.parent(), dialog.save_options_panel)
+        self.assertTrue(dialog.save_options_btn.isVisible())
+        self.assertFalse(dialog.save_options_panel.isVisible())
+        self.assertFalse(dialog.compression_combo.isVisible())
+        self.assertEqual(dialog.save_options_btn.text(), "Save Options")
+        self.assertEqual(
+            dialog.save_options_btn.toolButtonStyle(),
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon,
+        )
+        self.assertEqual(dialog.save_options_btn.arrowType(), Qt.ArrowType.RightArrow)
+
+        dialog.save_options_btn.click()
+        QApplication.processEvents()
+        self.assertTrue(dialog.save_options_panel.isVisible())
+        self.assertTrue(dialog.save_options_btn.isVisible())
+        self.assertEqual(dialog.save_options_btn.arrowType(), Qt.ArrowType.DownArrow)
+
+        dialog.save_options_btn.click()
+        QApplication.processEvents()
+        self.assertFalse(dialog.save_options_panel.isVisible())
+        self.assertEqual(dialog.save_options_btn.arrowType(), Qt.ArrowType.RightArrow)
+
+        dialog.close()
+        again = SaveDialog(self.vm)
+        self.addCleanup(again.close)
+        again.show()
+        QApplication.processEvents()
+        self.assertFalse(again.save_options_panel.isVisible())
+        self.assertEqual(again.save_options_btn.arrowType(), Qt.ArrowType.RightArrow)
 
 
 if __name__ == "__main__":

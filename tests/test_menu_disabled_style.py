@@ -1,3 +1,4 @@
+import re
 import unittest
 from pathlib import Path
 
@@ -18,6 +19,17 @@ class MenuDisabledStyleTests(unittest.TestCase):
         self.assertRegex(qss, r"QMenu::icon\s*\{[^}]*width:\s*16px")
         self.assertRegex(qss, r"QCheckBox::indicator\s*\{[^}]*width:\s*11px")
         self.assertRegex(qss, r"QMenu QCheckBox\s*\{[^}]*margin-left:\s*4px")
+
+    def test_plain_list_item_qss_does_not_force_text_color(self) -> None:
+        qss = (Path(__file__).resolve().parents[1] / "styles.qss").read_text(
+            encoding="utf-8"
+        )
+        for match in re.finditer(r"QListWidget::item\s*\{([^}]+)\}", qss):
+            self.assertNotIn(
+                "color:",
+                match.group(1),
+                "QListWidget::item color overrides setForeground (changed-file green)",
+            )
 
 
 if __name__ == "__main__":

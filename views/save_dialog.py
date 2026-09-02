@@ -3,22 +3,52 @@ Save Dialog - Dialog for saving bundle files with compression options
 """
 
 from pathlib import Path
+
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QBrush, QColor, QPalette
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QDialog,
-    QVBoxLayout,
+    QFileDialog,
     QHBoxLayout,
+    QLabel,
     QListWidget,
     QListWidgetItem,
-    QPushButton,
-    QComboBox,
-    QLabel,
-    QFileDialog,
     QMessageBox,
+    QPushButton,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from models.save_options import CRC_LABELS, PACKER_LABELS, RESOURCE_LABELS
+from models.save_options import (
+    CRC_LABELS,
+    PACKER_LABELS,
+    RESOURCE_LABELS,
+    SAVE_OPTION_HELP,
+)
 from viewmodels import MainViewModel
+
+_CHANGED_FOREGROUND = QColor("#7DCEA0")
+
+
+class _ForegroundRoleDelegate(QStyledItemDelegate):
+    """Paint QListWidget ForegroundRole even when a stylesheet is on the view."""
+
+    def initStyleOption(self, option: QStyleOptionViewItem, index) -> None:
+        super().initStyleOption(option, index)
+        if not (index.flags() & Qt.ItemFlag.ItemIsSelectable):
+            option.state &= ~QStyle.StateFlag.State_MouseOver  # type: ignore[attr-defined]
+        data = index.data(Qt.ItemDataRole.ForegroundRole)
+        if data is None:
+            return
+        color = data.color() if isinstance(data, QBrush) else QColor(data)
+        option.palette.setColor(QPalette.ColorRole.Text, color)  # type: ignore[attr-defined]
+        option.palette.setColor(QPalette.ColorRole.HighlightedText, color)  # type: ignore[attr-defined]
 
 
 class SaveDialog(QDialog):
@@ -44,7 +74,7 @@ class SaveDialog(QDialog):
         """Setup UI components"""
         self.setWindowTitle("Save Asset Bundles")
         self.setModal(True)
-        self.setMinimumSize(600, 300)
+        self.setMinimumSize(800, 400)
 
         # Main layout
         main_layout = QHBoxLayout(self)
@@ -61,45 +91,77 @@ class SaveDialog(QDialog):
         self.file_list.verticalScrollBar().setSingleStep(10)
         self.file_list.horizontalScrollBar().setSingleStep(10)
         self.file_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        self.file_list.setItemDelegate(_ForegroundRoleDelegate(self.file_list))
         main_layout.addWidget(self.file_list, stretch=3)
 
-        # Right side: Controls
         controls_layout = QVBoxLayout()
         controls_layout.setSpacing(10)
         controls_layout.setContentsMargins(5, 0, 0, 0)
 
-        # Compression mode section
-        compression_label = QLabel("Compression Method")
-        controls_layout.addWidget(compression_label)
+        self.save_options_btn = QToolButton()
+        self.save_options_btn.setText("Save Options")
+        self.save_options_btn.setCheckable(True)
+        self.save_options_btn.setChecked(False)
+        self.save_options_btn.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        self.save_options_btn.setArrowType(Qt.ArrowType.RightArrow)
+        controls_layout.addWidget(self.save_options_btn)
 
+        self.save_options_panel = QWidget()
+        panel_layout = QVBoxLayout(self.save_options_panel)
+        panel_layout.setContentsMargins(0, 0, 0, 0)
+        panel_layout.setSpacing(10)
+
+        (
+            compression_row,
+            self.compression_heading,
+            self.compression_help,
+        ) = self._option_heading("Compression Method")
+        panel_layout.addWidget(compression_row)
         self.compression_combo = QComboBox()
         self.compression_combo.addItems(list(PACKER_LABELS.keys()))
-        controls_layout.addWidget(self.compression_combo)
+        panel_layout.addWidget(self.compression_combo)
 
-        resource_label = QLabel("Resource files")
-        controls_layout.addWidget(resource_label)
+        (
+            resource_row,
+            self.resource_heading,
+            self.resource_help,
+        ) = self._option_heading("Resource Patch Method")
+        panel_layout.addWidget(resource_row)
         self.resource_combo = QComboBox()
         self.resource_combo.addItems(list(RESOURCE_LABELS.keys()))
-        controls_layout.addWidget(self.resource_combo)
+        panel_layout.addWidget(self.resource_combo)
 
-        crc_label = QLabel("CRC")
-        controls_layout.addWidget(crc_label)
+        crc_row, self.crc_heading, self.crc_help = self._option_heading(
+            "CRC Correction"
+        )
+        panel_layout.addWidget(crc_row)
         self.crc_combo = QComboBox()
         self.crc_combo.addItems(list(CRC_LABELS.keys()))
-        controls_layout.addWidget(self.crc_combo)
+        panel_layout.addWidget(self.crc_combo)
+
+        self.save_options_panel.setVisible(False)
+        self.save_options_btn.toggled.connect(self._on_save_options_toggled)
+        controls_layout.addWidget(self.save_options_panel)
 
         self._init_combos_from_viewmodel()
 
         controls_layout.addStretch()
 
-        # Save Selected button
+        self.show_only_changed_checkbox = QCheckBox("Show only changed files")
+        self.show_only_changed_checkbox.setChecked(
+            self.viewmodel.show_only_changed_files
+        )
+        self.show_only_changed_checkbox.clicked.connect(self._on_filter_clicked)
+        controls_layout.addWidget(self.show_only_changed_checkbox)
+
         self.save_selected_btn = QPushButton("Save Selected")
         self.save_selected_btn.setToolTip("Save selected bundle file")
         self.save_selected_btn.clicked.connect(self._on_save_selected_clicked)
         self.save_selected_btn.setEnabled(False)
         controls_layout.addWidget(self.save_selected_btn)
 
-        # Save All button
         self.save_all_btn = QPushButton("Save All Changed")
         self.save_all_btn.setToolTip("Save all modified bundle files")
         self.save_all_btn.clicked.connect(self._on_save_all_clicked)
@@ -107,42 +169,77 @@ class SaveDialog(QDialog):
 
         main_layout.addLayout(controls_layout, stretch=1)
 
-        # Connect selection change
         self.file_list.itemSelectionChanged.connect(self._on_selection_changed)
 
+    def _option_heading(self, title: str) -> tuple[QWidget, QLabel, QLabel]:
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        heading = QLabel(title)
+        help_icon = QLabel("ⓘ")
+        help_icon.setToolTip(SAVE_OPTION_HELP[title])
+        help_icon.setCursor(Qt.CursorShape.WhatsThisCursor)
+        layout.addWidget(heading)
+        layout.addWidget(help_icon)
+        layout.addStretch()
+        return row, heading, help_icon
+
+    def _on_save_options_toggled(self, checked: bool) -> None:
+        self.save_options_panel.setVisible(checked)
+        arrow = Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
+        self.save_options_btn.setArrowType(arrow)
+
+    def _on_filter_clicked(self, checked: bool) -> None:
+        self.viewmodel.set_show_only_changed_files(checked)
+        self._load_files()
+
+    def _add_placeholder(self, text: str) -> None:
+        item = QListWidgetItem(text)
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+        self.file_list.addItem(item)
+
+    def _add_file_row(self, filepath: str, is_changed: bool) -> None:
+        filename = Path(filepath).name
+        item = QListWidgetItem()
+        item.setData(Qt.ItemDataRole.UserRole, filepath)
+        if is_changed:
+            item.setText(f"* {filename}")
+            item.setForeground(QBrush(_CHANGED_FOREGROUND))
+            item.setToolTip(f"{filepath} (modified)")
+        else:
+            item.setText(filename)
+            item.setToolTip(filepath)
+        self.file_list.addItem(item)
+
     def _load_files(self):
-        """Load source files into list"""
-        files = self.viewmodel.get_source_files()
-
-        for filepath, is_changed in files:
-            filename = Path(filepath).name
-
-            # Create list item
-            item = QListWidgetItem(filename)
-            item.setData(Qt.ItemDataRole.UserRole, filepath)
-
-            # Mark changed files with asterisk
-            if is_changed:
-                item.setText(f"{filename} *")
-                item.setToolTip(f"{filepath} (modified)")
+        self.file_list.clear()
+        all_files = self.viewmodel.get_source_files()
+        if not all_files:
+            self._add_placeholder("No files loaded")
+        else:
+            if self.viewmodel.show_only_changed_files:
+                visible = [(path, changed) for path, changed in all_files if changed]
             else:
-                item.setToolTip(filepath)
+                visible = all_files
+            if not visible:
+                self._add_placeholder("No changed files")
+            else:
+                for filepath, is_changed in visible:
+                    self._add_file_row(filepath, is_changed)
+        self.save_all_btn.setEnabled(self.viewmodel.has_changed_files())
+        self._on_selection_changed()
 
-            self.file_list.addItem(item)
-
-        # Update button states
-        has_files = len(files) > 0
-        has_changed = self.viewmodel.has_changed_files()
-
-        self.save_all_btn.setEnabled(has_changed)
-
-        if not has_files:
-            self.file_list.addItem("No files loaded")
+    def _selected_filepaths(self) -> list[str]:
+        paths: list[str] = []
+        for item in self.file_list.selectedItems():
+            path = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(path, str) and path:
+                paths.append(path)
+        return paths
 
     def _on_selection_changed(self):
-        """Handle selection change"""
-        has_selection = len(self.file_list.selectedItems()) > 0
-        self.save_selected_btn.setEnabled(has_selection)
+        self.save_selected_btn.setEnabled(bool(self._selected_filepaths()))
 
     def _label_for(self, labels: dict[str, str], value: object) -> str:
         for label, stored in labels.items():
@@ -207,8 +304,8 @@ class SaveDialog(QDialog):
             return
 
         # Check if multiple files selected
-        if len(selected_items) > 1:
-            self._save_multiple_selected(selected_items)
+        if len(self._selected_filepaths()) > 1:
+            self._save_multiple_selected()
         else:
             self._save_single_selected(selected_items[0])
 
@@ -216,6 +313,8 @@ class SaveDialog(QDialog):
         """Save a single selected file with Save As dialog"""
         # Get selected file info
         filepath = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(filepath, str) or not filepath:
+            return
         filename = Path(filepath).name
 
         # Show Save As dialog
@@ -249,10 +348,12 @@ class SaveDialog(QDialog):
             filepath, str(save_path), packer, resource, crc
         )
 
-    def _save_multiple_selected(self, selected_items: list[QListWidgetItem]):
+    def _save_multiple_selected(self) -> None:
         """Save multiple selected files to a directory"""
         # Collect filepaths
-        filepaths = [item.data(Qt.ItemDataRole.UserRole) for item in selected_items]
+        filepaths = self._selected_filepaths()
+        if not filepaths:
+            return
 
         # Show directory selection dialog
         if not self._select_output_directory():

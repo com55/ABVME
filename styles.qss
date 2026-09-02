@@ -57,6 +57,7 @@ QTableWidget, QListWidget {
     selection-background-color: #094771; /* สีพื้นหลังตอนเลือกแถว */
     selection-color: white;
     outline: 0; /* ลบเส้นประเวลาคลิกเลือก */
+    color: #cccccc;
 }
 
 /* เอฟเฟคตอนเอาเมาส์ชี้ (Hover) */
@@ -65,9 +66,8 @@ QListWidget::item:hover {
     color: white;
 }
 
-/* จัดการสีตัวอักษรใน Item ปกติ */
+/* จัดการ padding ใน Item ปกติ — อย่าใส่ color ที่นี่ จะทับ setForeground ของไฟล์ที่เปลี่ยน */
 QListWidget::item {
-    color: #cccccc;
     padding: 1px; /* เพิ่มระยะห่างให้ดูไม่อึดอัด */
 }
 
@@ -311,11 +311,11 @@ QListWidget {
     selection-background-color: #094771;
     selection-color: white;
     outline: 0;
+    color: #cccccc;
 }
 
 QListWidget::item {
     padding: 5px;
-    color: #cccccc;
 }
 
 QListWidget::item:hover {

@@ -17,12 +17,32 @@ PACKER_LABELS = {
 RESOURCE_LABELS = {
     "Inline": "inline",
     "Orphan cleanup": "orphan_cleanup",
-    "Resource patch": "resource_patch",
+    "Rebuild .resS": "resource_patch",
 }
 CRC_LABELS = {
     "Off": "off",
     "On": "on",
     "Auto": "auto",
+}
+SAVE_OPTION_HELP = {
+    "Compression Method": (
+        "Select how to compress the bundle.\n"
+        " - None: no compression.\n"
+        " - LZ4: fast compression but larger size.\n"
+        " - LZ4HC: better compression than LZ4.\n"
+        " - LZMA: best compression but slowest.\n"
+        " - Original: keeps the bundle's current compression flags."
+    ),
+    "Resource Patch Method": (
+        "Select how to patch the resource stream.\n"
+        " - Inline: stores resource data in the object.\n"
+        " - Orphan cleanup: drops unused .resS entries.\n"
+        " - Rebuild .resS: writes resource data back into .resS."
+    ),
+    "CRC Correction": (
+        "Makes the CRC32 the same as the original file.\n"
+        " - Auto: detects from the BuildTarget if it is Windows"
+    ),
 }
 
 _PACKER_VALUES = frozenset(PACKER_LABELS.values())
@@ -78,3 +98,22 @@ def parse_crc_mode(value: object) -> CrcMode:
         return CrcMode(_as_str(value))
     except ValueError:
         return CrcMode.AUTO
+
+
+def parse_show_only_changed_files(value: object) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        if value == 0:
+            return False
+        if value == 1:
+            return True
+        return True
+    text = _as_str(value).strip().lower()
+    if text in ("0", "false"):
+        return False
+    if text in ("1", "true"):
+        return True
+    return True
