@@ -54,6 +54,7 @@ def _texture_reader(*, path_id: int, parent, state: dict):
     obj.assets_file = _AssetsFile(parent)
     obj.peek_name.return_value = f"tex{path_id}"
     obj.container = ""
+    obj.byte_size = 0
 
     def read(_check: bool = True):
         tex = MagicMock()
@@ -105,6 +106,7 @@ def _unitypy_texture_reader(*, path_id: int, parent, disk: dict, inlined_bytes: 
     obj.assets_file = _AssetsFile(parent)
     obj.peek_name.return_value = f"tex{path_id}"
     obj.container = ""
+    obj.byte_size = 0
 
     def read(_check: bool = True):
         stream = SimpleNamespace(
@@ -523,6 +525,7 @@ class StreamCaptureRegisterTests(unittest.TestCase):
         obj.type = ClassIDType.Texture2D
         obj.peek_name.return_value = "icon"
         obj.container = ""
+        obj.byte_size = 0
         tex = MagicMock()
         tex.m_StreamData = SimpleNamespace(path="CAB-x.resS", offset=8, size=16)
         tex.image_data = b""
@@ -557,6 +560,7 @@ class StreamCaptureRegisterTests(unittest.TestCase):
         obj.type = ClassIDType.Texture2D
         obj.peek_name.return_value = "icon"
         obj.container = ""
+        obj.byte_size = 0
         tex = MagicMock()
         tex.m_StreamData = SimpleNamespace(path="CAB-x.resS", offset=1, size=2)
         tex.set_image = MagicMock()
@@ -579,6 +583,7 @@ class StreamCaptureRegisterTests(unittest.TestCase):
         obj.type = ClassIDType.Texture2D
         obj.peek_name.return_value = "icon"
         obj.container = ""
+        obj.byte_size = 0
         tex = MagicMock()
         tex.m_StreamData = SimpleNamespace(path="CAB-x.resS", offset=4, size=8)
         tex.set_image.side_effect = RuntimeError("set_image failed")
@@ -604,6 +609,7 @@ class StreamCaptureRegisterTests(unittest.TestCase):
         obj.type = ClassIDType.Texture2D
         obj.peek_name.return_value = "icon"
         obj.container = ""
+        obj.byte_size = 0
         tex = MagicMock()
         tex.m_StreamData = SimpleNamespace(path="CAB-x.resS", offset=4, size=8)
         tex.set_image = MagicMock()

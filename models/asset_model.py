@@ -73,6 +73,21 @@ _DUMP_MAX_ITEMS = 80
 _DUMP_MAX_DEPTH = 8
 _DUMP_MAX_STR = 400
 _DUMP_INDENT = "      "
+EMPTY_CELL_TEXT = "(none)"
+
+
+def format_byte_size(n: int) -> str:
+    """Format a byte count as 1024-based human-readable text."""
+    if n < 1024:
+        return f"{n} B"
+    value = float(n)
+    units = ("KB", "MB", "GB", "TB")
+    for i, unit in enumerate(units):
+        value /= 1024.0
+        rounded = round(value, 1)
+        if rounded < 1024.0 or i == len(units) - 1:
+            return f"{rounded:.1f} {unit}"
+    raise RuntimeError("format_byte_size: unit loop exhausted")
 
 
 def format_object_dump(value: Any, *, max_chars: int = _DUMP_MAX_CHARS) -> str:
@@ -173,6 +188,10 @@ class AssetInfo:
         self.path_id: str = str(self._obj.path_id) or ""
         self.obj_type: ClassIDType = self._obj.type
         self.source_path: str = source_path
+        try:
+            self.byte_size: int = int(getattr(obj, "byte_size", 0))
+        except (TypeError, ValueError):
+            self.byte_size = 0
         self.is_changed: bool = False
         self.is_editable: bool = self.obj_type in unity.edit_types
         self.is_exportable: bool = self.obj_type in unity.export_types

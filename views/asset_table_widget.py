@@ -2,6 +2,8 @@
 Asset Table Widget - View component for displaying asset list
 """
 
+from pathlib import Path
+
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
@@ -13,12 +15,40 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from models.asset_model import EMPTY_CELL_TEXT, AssetInfo, format_byte_size
 from views.components.custom_filter_header import FilterHeader
-from models import AssetInfo
 
 _CHANGED_FOREGROUND = QColor("#7DCEA0")
+_PLACEHOLDER_FOREGROUND = QColor("#808080")
 MAX_COLUMN_WIDTH = 360
 _CELL_TEXT_PADDING = 16
+_HEADERS = ["Name", "Type", "PathID", "Container", "Size", "SourceFile"]
+_COL_NAME = 0
+_COL_TYPE = 1
+_COL_PATH_ID = 2
+_COL_CONTAINER = 3
+_COL_SIZE = 4
+_COL_SOURCE = 5
+
+
+class _ByteSizeItem(QTableWidgetItem):
+    def __init__(self, byte_size: int) -> None:
+        super().__init__(format_byte_size(byte_size))
+        self.byte_size = byte_size
+        self.setToolTip(str(byte_size))
+
+    def __lt__(self, other: QTableWidgetItem) -> bool:
+        if isinstance(other, _ByteSizeItem):
+            return self.byte_size < other.byte_size
+        return super().__lt__(other)
+
+
+def _display_or_none(value: str) -> str:
+    return EMPTY_CELL_TEXT if value == "" else value
+
+
+def _source_filename(source_path: str) -> str:
+    return Path(source_path).name
 
 
 class AssetTableWidget(QWidget):
@@ -45,8 +75,8 @@ class AssetTableWidget(QWidget):
         
         # Create table
         self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["Name", "Type", "PathID", "Container", "SourceFile"])
+        self.table.setColumnCount(len(_HEADERS))
+        self.table.setHorizontalHeaderLabels(_HEADERS)
         
         # Replace default header with FilterHeader
         self.header = FilterHeader(self.table)
@@ -146,38 +176,38 @@ class AssetTableWidget(QWidget):
             name_item.setToolTip(asset.name or "")
             name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             name_item.setData(Qt.ItemDataRole.UserRole, asset)
-            self.table.setItem(row, 0, name_item)
-            
-            # Type (Column 1)
+            self.table.setItem(row, _COL_NAME, name_item)
+
             type_item = QTableWidgetItem(asset.obj_type.name)
             type_item.setToolTip(asset.obj_type.name)
             type_item.setFlags(type_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.table.setItem(row, 1, type_item)
-            
-            # PathID (Column 2)
+            self.table.setItem(row, _COL_TYPE, type_item)
+
             path_id_item = QTableWidgetItem(asset.path_id)
             path_id_item.setToolTip(asset.path_id)
             path_id_item.setFlags(path_id_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.table.setItem(row, 2, path_id_item)
-            
-            # Container (Column 3)
-            container_item = QTableWidgetItem(asset.container)
+            self.table.setItem(row, _COL_PATH_ID, path_id_item)
+
+            container_text = _display_or_none(asset.container)
+            container_item = QTableWidgetItem(container_text)
             container_item.setToolTip(asset.container)
             container_item.setFlags(container_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.table.setItem(row, 3, container_item)
-            
-            # SourceFile (Column 4)
-            from pathlib import Path
-            source_item = QTableWidgetItem(str(Path(asset.source_path).name))
+            self.table.setItem(row, _COL_CONTAINER, container_item)
+
+            size_item = _ByteSizeItem(int(getattr(asset, "byte_size", 0) or 0))
+            size_item.setFlags(size_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row, _COL_SIZE, size_item)
+
+            source_name = _source_filename(asset.source_path)
+            source_item = QTableWidgetItem(_display_or_none(source_name))
             source_item.setToolTip(asset.source_path)
             source_item.setData(Qt.ItemDataRole.UserRole, asset.source_path)
             source_item.setFlags(source_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.table.setItem(row, 4, source_item)
+            self.table.setItem(row, _COL_SOURCE, source_item)
             self._apply_changed_style(row, asset)
-        
-        # Setup filter boxes for Type and SourceFile columns
+
         self.header.set_filter_boxes(1, list(all_types))
-        self.header.set_filter_boxes(4, list(all_sources))
+        self.header.set_filter_boxes(5, list(all_sources))
         
         self.table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Interactive
@@ -231,23 +261,44 @@ class AssetTableWidget(QWidget):
             width = min(max(width, header.minimumSectionSize()), MAX_COLUMN_WIDTH)
             self.table.setColumnWidth(column, width)
         
+    def _cell_is_placeholder(self, asset: AssetInfo, column: int) -> bool:
+        if column == _COL_NAME:
+            return asset.name == ""
+        if column == _COL_CONTAINER:
+            return asset.container == ""
+        if column == _COL_SOURCE:
+            return _source_filename(asset.source_path) == ""
+        if column == _COL_TYPE:
+            return asset.obj_type.name == ""
+        if column == _COL_PATH_ID:
+            return asset.path_id == ""
+        return False
+
     def _apply_changed_style(self, row: int, asset: AssetInfo):
         """Apply visual indicator for changed assets"""
-        name_item = self.table.item(row, 0)
+        name_item = self.table.item(row, _COL_NAME)
         if not name_item:
             return
         is_changed = bool(getattr(asset, "is_changed", False))
-        suffix = " *" if is_changed else "   "
-        base_name = asset.name or ""
-        name_item.setText(f"{base_name}{suffix}")
-        brush = QBrush(_CHANGED_FOREGROUND) if is_changed else None
-        for col in range(5):
+        if asset.name == "":
+            name_item.setText(
+                f"{EMPTY_CELL_TEXT} *" if is_changed else EMPTY_CELL_TEXT
+            )
+        else:
+            suffix = " *" if is_changed else "   "
+            name_item.setText(f"{asset.name}{suffix}")
+        green = QBrush(_CHANGED_FOREGROUND) if is_changed else None
+        dim = QBrush(_PLACEHOLDER_FOREGROUND)
+        for col in range(self.table.columnCount()):
             item = self.table.item(row, col)
-            if item:
-                if brush is None:
-                    item.setData(Qt.ItemDataRole.ForegroundRole, None)
-                else:
-                    item.setForeground(brush)
+            if not item:
+                continue
+            if self._cell_is_placeholder(asset, col):
+                item.setForeground(dim)
+            elif green is None:
+                item.setData(Qt.ItemDataRole.ForegroundRole, None)
+            else:
+                item.setForeground(green)
         
     def refresh_asset_display(self, asset: AssetInfo):
         """Refresh display for a specific asset"""
@@ -289,7 +340,12 @@ class AssetTableWidget(QWidget):
                         break
                     
                     item_data = item.data(Qt.ItemDataRole.UserRole)
-                    check_val = item_data if item_data is not None else cell_text
+                    if item_data is None:
+                        check_val = (
+                            "" if cell_text == EMPTY_CELL_TEXT else cell_text
+                        )
+                    else:
+                        check_val = item_data
                         
                     if check_val not in val:
                         should_show = False
