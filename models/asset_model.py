@@ -168,6 +168,47 @@ class ExportResult:
         return self.status == ResultStatus.COMPLETE
 
 
+def planned_export_parts(
+    *,
+    name: str,
+    container: str,
+    path_id: str,
+    output_name: str | None = None,
+) -> tuple[str, str]:
+    """Return (file_name_without_ext, suffix_with_dot) used by export."""
+    need_to_add_path_id = False
+    if output_name:
+        full_name = output_name
+    elif container:
+        full_name = Path(container).name
+    else:
+        full_name = name
+        need_to_add_path_id = True
+
+    parts = full_name.split(".")
+    file_name = parts[0]
+    if need_to_add_path_id:
+        file_name += "_" + str(path_id)
+    file_extension = f".{parts[1]}" if len(parts) > 1 else ""
+    return file_name, file_extension
+
+
+def planned_export_filename(
+    *,
+    name: str,
+    container: str,
+    path_id: str,
+    output_name: str | None = None,
+) -> str:
+    file_name, file_extension = planned_export_parts(
+        name=name,
+        container=container,
+        path_id=path_id,
+        output_name=output_name,
+    )
+    return f"{file_name}{file_extension}"
+
+
 class AssetInfo:
     """
     Asset information and operations wrapper
@@ -417,27 +458,12 @@ class AssetInfo:
             output_dir = Path(output_dir).resolve()
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            need_to_add_path_id = False
-
-            if output_name:
-                full_name = output_name
-            elif self.container:
-                full_name = Path(self.container).name
-            else:
-                full_name = self.name
-                need_to_add_path_id = True
-
-            # Split at first dot only
-            parts = full_name.split(".")
-
-            file_name = parts[0]
-            if need_to_add_path_id:
-                file_name += "_" + self.path_id
-
-            file_extension = ""
-            if len(parts) > 1:
-                first_suffix = parts[1]
-                file_extension = f".{first_suffix}"
+            file_name, file_extension = planned_export_parts(
+                name=self.name,
+                container=self.container,
+                path_id=self.path_id,
+                output_name=output_name,
+            )
 
             full_path_no_ext = output_dir / file_name
 

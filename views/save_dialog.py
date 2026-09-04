@@ -32,6 +32,7 @@ from models.save_options import (
     SAVE_OPTION_HELP,
 )
 from viewmodels import MainViewModel
+from views.overwrite_confirm import confirm_overwrite_existing
 
 _CHANGED_FOREGROUND = QColor("#7DCEA0")
 
@@ -272,7 +273,7 @@ class SaveDialog(QDialog):
         Returns True if directory was selected, False otherwise
         """
         if self.output_dir is None:
-            default_dir = self.viewmodel.get_dialog_start_directory()
+            default_dir = self.viewmodel.get_output_dialog_start_directory()
         else:
             default_dir = str(self.output_dir)
 
@@ -288,6 +289,16 @@ class SaveDialog(QDialog):
     def _on_save_all_clicked(self):
         """Handle Save All button click"""
         if not self._select_output_directory():
+            return
+        assert self.output_dir is not None
+
+        names = [
+            Path(path).name
+            for path, changed in self.viewmodel.get_source_files()
+            if changed
+        ]
+        existing = self.viewmodel.existing_destination_names(self.output_dir, names)
+        if not confirm_overwrite_existing(self, existing):
             return
 
         packer, resource, crc = self._scratch_modes()
@@ -320,7 +331,7 @@ class SaveDialog(QDialog):
         # Show Save As dialog
         if self.output_dir is None:
             default_path = str(
-                Path(self.viewmodel.get_dialog_start_directory()) / filename
+                Path(self.viewmodel.get_output_dialog_start_directory()) / filename
             )
         else:
             default_path = str(self.output_dir / filename)
@@ -357,6 +368,12 @@ class SaveDialog(QDialog):
 
         # Show directory selection dialog
         if not self._select_output_directory():
+            return
+        assert self.output_dir is not None
+
+        names = [Path(path).name for path in filepaths]
+        existing = self.viewmodel.existing_destination_names(self.output_dir, names)
+        if not confirm_overwrite_existing(self, existing):
             return
 
         packer, resource, crc = self._scratch_modes()

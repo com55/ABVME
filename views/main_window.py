@@ -46,6 +46,7 @@ from utilities.drop_classifier import (
 from services import StatusBarHandler
 from models import AssetInfo, EditResult
 from models.save_options import CRC_LABELS, PACKER_LABELS, RESOURCE_LABELS
+from views.overwrite_confirm import confirm_overwrite_existing
 
 
 log = logging.getLogger("ABVME")
@@ -498,7 +499,7 @@ class ABVMEMainWindow(QMainWindow):
         files, _ = QFileDialog.getOpenFileNames(
             self,
             "Select Asset Bundles",
-            self.viewmodel.get_dialog_start_directory(),
+            self.viewmodel.get_open_dialog_start_directory(),
             "Asset Bundles (*.bundle *.unity3d);;All Files (*.*)",
         )
         if files:
@@ -619,7 +620,7 @@ class ABVMEMainWindow(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select replacement file",
-            self.viewmodel.get_dialog_start_directory(),
+            self.viewmodel.get_replace_dialog_start_directory(),
             file_filter or "",
         )
 
@@ -680,7 +681,7 @@ class ABVMEMainWindow(QMainWindow):
         asset = self.viewmodel.selected_assets[0]
         suggested_name = self.viewmodel.get_suggested_export_filename(asset)
         suggested_path = (
-            Path(self.viewmodel.get_dialog_start_directory()) / suggested_name
+            Path(self.viewmodel.get_output_dialog_start_directory()) / suggested_name
         )
 
         file_path, _ = QFileDialog.getSaveFileName(
@@ -695,10 +696,15 @@ class ABVMEMainWindow(QMainWindow):
         output_dir = QFileDialog.getExistingDirectory(
             self,
             "Select Export Folder",
-            self.viewmodel.get_dialog_start_directory(),
+            self.viewmodel.get_output_dialog_start_directory(),
         )
 
         if output_dir:
+            existing = self.viewmodel.existing_export_destination_names(
+                Path(output_dir), self.viewmodel.selected_assets
+            )
+            if not confirm_overwrite_existing(self, existing):
+                return
             success, total = self.viewmodel.export_multiple_assets(
                 self.viewmodel.selected_assets, Path(output_dir)
             )

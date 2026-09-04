@@ -7,9 +7,10 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QObject, QSettings, Signal
+from PySide6.QtCore import QObject, QSettings, QStandardPaths, Signal
 
 from models import ABVMECore, AssetInfo, EditResult, ExportResult
+from models.asset_model import planned_export_filename
 from models.save_options import (
     parse_crc_mode,
     parse_packer,
@@ -20,6 +21,26 @@ from services import LoaderWorker, EditWorker, SaveWorker
 
 
 log = logging.getLogger("ABVME")
+
+_LAST_OPEN_DIRECTORY_KEY = "last_open_directory"
+
+
+def desktop_directory() -> str:
+    path = QStandardPaths.writableLocation(
+        QStandardPaths.StandardLocation.DesktopLocation
+    )
+    if path:
+        return path
+    return str(Path.home())
+
+
+def _existing_directory(path_str: str) -> str | None:
+    if not path_str:
+        return None
+    folder = Path(path_str)
+    if folder.is_dir():
+        return str(folder)
+    return None
 
 
 class MainViewModel(QObject):
@@ -66,6 +87,8 @@ class MainViewModel(QObject):
         self.core: Optional[ABVMECore] = None
         self.assets: list[AssetInfo] = []
         self.selected_assets: list[AssetInfo] = []
+        self._output_directory: str | None = None
+        self._replace_directory: str | None = None
 
         # Background workers
         self.loader_worker: Optional[LoaderWorker] = None
@@ -87,6 +110,8 @@ class MainViewModel(QObject):
                 "No valid bundle files were provided.", logging.WARNING
             )
             return
+
+        self.remember_open_directory_from_paths(valid_files)
 
         # Create worker thread
         self.loader_worker = LoaderWorker(ABVMECore(), valid_files)
@@ -167,8 +192,8 @@ class MainViewModel(QObject):
             return self.selected_assets[0]
         return None
 
-    def get_dialog_start_directory(self) -> str:
-        """Folder of the selected or first loaded bundle, else cwd."""
+    def _loaded_bundle_directory(self) -> str | None:
+        """Folder of the selected or first loaded bundle."""
         candidates: list[str] = []
         selected = self.get_single_selected_asset()
         if selected is not None:
@@ -184,7 +209,66 @@ class MainViewModel(QObject):
             if str(folder) in (".", ""):
                 continue
             return str(folder)
-        return str(Path.cwd())
+        return None
+
+    def get_open_dialog_start_directory(self) -> str:
+        remembered = self._settings.value(_LAST_OPEN_DIRECTORY_KEY, "", type=str)
+        return _existing_directory(remembered) or desktop_directory()
+
+    def remember_open_directory_from_paths(self, file_paths: list[str]) -> None:
+        for path_str in file_paths:
+            if not path_str:
+                continue
+            folder = Path(path_str).parent
+            existing = _existing_directory(str(folder))
+            if existing is None:
+                continue
+            self._settings.setValue(_LAST_OPEN_DIRECTORY_KEY, existing)
+            self._settings.sync()
+            return
+
+    def get_output_dialog_start_directory(self) -> str:
+        remembered = _existing_directory(self._output_directory or "")
+        if remembered:
+            return remembered
+        return self._loaded_bundle_directory() or desktop_directory()
+
+    def remember_output_directory(self, directory: str) -> None:
+        existing = _existing_directory(directory)
+        if existing:
+            self._output_directory = existing
+
+    def get_replace_dialog_start_directory(self) -> str:
+        remembered = _existing_directory(self._replace_directory or "")
+        if remembered:
+            return remembered
+        return self._loaded_bundle_directory() or desktop_directory()
+
+    def remember_replace_directory_from_path(self, file_path: str) -> None:
+        if not file_path:
+            return
+        existing = _existing_directory(str(Path(file_path).parent))
+        if existing:
+            self._replace_directory = existing
+
+    def existing_destination_names(
+        self, output_dir: Path, names: list[str]
+    ) -> list[str]:
+        dest = Path(output_dir)
+        return [name for name in names if (dest / name).exists()]
+
+    def existing_export_destination_names(
+        self, output_dir: Path, assets: list
+    ) -> list[str]:
+        names = [
+            planned_export_filename(
+                name=getattr(asset, "name", "") or "",
+                container=getattr(asset, "container", "") or "",
+                path_id=str(getattr(asset, "path_id", "") or ""),
+            )
+            for asset in assets
+        ]
+        return self.existing_destination_names(output_dir, names)
 
     def can_edit_asset(self) -> bool:
         """Check if editing is possible (exactly one asset selected)"""
@@ -211,6 +295,7 @@ class MainViewModel(QObject):
             )
             return False
 
+        self.remember_replace_directory_from_path(source_path)
         self.edit_started.emit(f"Replacing {asset.name}...")
         self.edit_worker = EditWorker(asset, source_path)
         self.edit_worker.finished.connect(self._on_edit_finished)
@@ -255,6 +340,7 @@ class MainViewModel(QObject):
         Returns:
             ExportResult object
         """
+        self.remember_output_directory(str(output_path.parent))
         result = asset.export(output_path.parent, output_path.name)
 
         level = logging.INFO if result.is_success else logging.ERROR
@@ -284,6 +370,7 @@ class MainViewModel(QObject):
         Returns:
             Tuple of (successful_count, total_count)
         """
+        self.remember_output_directory(str(output_dir))
         successes = 0
         total = len(assets)
 
@@ -411,6 +498,7 @@ class MainViewModel(QObject):
             return False
 
         self.persist_save_options(packer, resource_patch_mode, crc_mode)
+        self.remember_output_directory(str(output_dir))
 
         self.save_started.emit("Saving all changed files...")
         self._start_save_worker(
@@ -455,6 +543,7 @@ class MainViewModel(QObject):
             return False
 
         self.persist_save_options(packer, resource_patch_mode, crc_mode)
+        self.remember_output_directory(str(output_dir))
 
         display_name = output_filename or Path(filepath).name
         self.save_started.emit(f"Saving {display_name}...")
@@ -505,6 +594,7 @@ class MainViewModel(QObject):
             return False
 
         self.persist_save_options(packer, resource_patch_mode, crc_mode)
+        self.remember_output_directory(str(output_dir))
 
         self.save_started.emit(f"Saving {len(filepaths)} selected file(s)...")
 
