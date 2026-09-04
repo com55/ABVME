@@ -85,6 +85,9 @@ class MainViewModel(QObject):
         self.show_only_changed_files = parse_show_only_changed_files(
             self._settings.value("show_only_changed_files")
         )
+        self.save_options_expanded = bool(
+            self._settings.value("save_options_expanded", False, type=bool)
+        )
         self.core: Optional[ABVMECore] = None
         self.assets: list[AssetInfo] = []
         self.selected_assets: list[AssetInfo] = []
@@ -151,6 +154,10 @@ class MainViewModel(QObject):
     def set_show_only_changed_files(self, enabled: bool) -> None:
         self.show_only_changed_files = bool(enabled)
         self._settings.setValue("show_only_changed_files", self.show_only_changed_files)
+
+    def set_save_options_expanded(self, expanded: bool) -> None:
+        self.save_options_expanded = bool(expanded)
+        self._settings.setValue("save_options_expanded", self.save_options_expanded)
 
     def set_packer(self, packer: str) -> None:
         self.persist_save_options(packer, self.resource_patch_mode, self.crc_mode)

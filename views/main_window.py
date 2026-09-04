@@ -223,10 +223,14 @@ class ABVMEMainWindow(QMainWindow):
         self.show_all_action.setChecked(self.viewmodel.show_all_objects)
         self.show_all_action.toggled.connect(self.viewmodel.set_show_all_objects)
         options_menu.addAction(self.show_all_action)
+        options_menu.addSeparator()
+
+        self._save_options_menu = options_menu.addMenu("Save Options")
+        self._save_options_menu.menuAction().setIcon(_menu_icon())
 
         self._packer_group = QActionGroup(self)
         self._packer_group.setExclusive(True)
-        self._compression_menu = options_menu.addMenu("Compression")
+        self._compression_menu = self._save_options_menu.addMenu("Compression")
         self._compression_menu.menuAction().setIcon(_menu_icon())
         for label, value in PACKER_LABELS.items():
             action = QAction(label, self)
@@ -238,7 +242,7 @@ class ABVMEMainWindow(QMainWindow):
 
         self._resource_group = QActionGroup(self)
         self._resource_group.setExclusive(True)
-        self._resource_menu = options_menu.addMenu("Resource Patch Method")
+        self._resource_menu = self._save_options_menu.addMenu("Resource Patch Method")
         self._resource_menu.menuAction().setIcon(_menu_icon())
         for label, value in RESOURCE_LABELS.items():
             action = QAction(label, self)
@@ -250,7 +254,7 @@ class ABVMEMainWindow(QMainWindow):
 
         self._crc_group = QActionGroup(self)
         self._crc_group.setExclusive(True)
-        self._crc_menu = options_menu.addMenu("CRC Correction")
+        self._crc_menu = self._save_options_menu.addMenu("CRC Correction")
         self._crc_menu.menuAction().setIcon(_menu_icon())
         for label, value in CRC_LABELS.items():
             action = QAction(label, self)

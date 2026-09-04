@@ -102,11 +102,9 @@ class SaveDialog(QDialog):
         self.save_options_btn = QToolButton()
         self.save_options_btn.setText("Save Options")
         self.save_options_btn.setCheckable(True)
-        self.save_options_btn.setChecked(False)
         self.save_options_btn.setToolButtonStyle(
             Qt.ToolButtonStyle.ToolButtonTextBesideIcon
         )
-        self.save_options_btn.setArrowType(Qt.ArrowType.RightArrow)
         controls_layout.addWidget(self.save_options_btn)
 
         self.save_options_panel = QWidget()
@@ -142,7 +140,11 @@ class SaveDialog(QDialog):
         self.crc_combo.addItems(list(CRC_LABELS.keys()))
         panel_layout.addWidget(self.crc_combo)
 
-        self.save_options_panel.setVisible(False)
+        expanded = self.viewmodel.save_options_expanded
+        self.save_options_btn.setChecked(expanded)
+        self.save_options_panel.setVisible(expanded)
+        arrow = Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        self.save_options_btn.setArrowType(arrow)
         self.save_options_btn.toggled.connect(self._on_save_options_toggled)
         controls_layout.addWidget(self.save_options_panel)
 
@@ -190,6 +192,7 @@ class SaveDialog(QDialog):
         self.save_options_panel.setVisible(checked)
         arrow = Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
         self.save_options_btn.setArrowType(arrow)
+        self.viewmodel.set_save_options_expanded(checked)
 
     def _on_filter_clicked(self, checked: bool) -> None:
         self.viewmodel.set_show_only_changed_files(checked)

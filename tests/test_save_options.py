@@ -133,6 +133,15 @@ class SaveOptionsViewModelTests(unittest.TestCase):
         self.assertEqual(self.vm.crc_mode, "auto")
         self.assertTrue(self.vm.show_only_changed_files)
 
+    def test_save_options_expanded_defaults_false(self) -> None:
+        self.assertFalse(self.vm.save_options_expanded)
+
+    def test_set_save_options_expanded_persists(self) -> None:
+        self.vm.set_save_options_expanded(True)
+        other = MainViewModel(settings=self.settings)
+        self.assertTrue(other.save_options_expanded)
+        self.assertTrue(self.settings.value("save_options_expanded", False, type=bool))
+
     def test_set_show_only_changed_files_writes_one_key(self) -> None:
         self.vm.set_show_only_changed_files(False)
         self.assertFalse(self.vm.show_only_changed_files)
@@ -279,6 +288,27 @@ class OptionsMenuSaveSettingsTests(unittest.TestCase):
         self.assertEqual(self.settings.value("resource_patch_mode"), "inline")
         _item(_submenu(self.window, "CRC Correction"), "On").trigger()
         self.assertEqual(self.settings.value("crc_mode"), "on")
+
+    def test_options_menu_nests_save_options(self) -> None:
+        labels = []
+        for item in _options_menu(self.window).actions():
+            if item.isSeparator():
+                labels.append("---")
+            else:
+                labels.append(_plain(item.text()))
+        self.assertEqual(labels, ["Display all assets", "---", "Save Options"])
+        save_options = _item(_options_menu(self.window), "Save Options")
+        self.assertFalse(save_options.isCheckable())
+        self.assertFalse(save_options.icon().isNull())
+        nested = [
+            _plain(item.text())
+            for item in save_options.menu().actions()
+            if not item.isSeparator()
+        ]
+        self.assertEqual(
+            nested,
+            ["Compression", "Resource Patch Method", "CRC Correction"],
+        )
 
     def test_about_to_show_rebuilds_checks_from_viewmodel(self) -> None:
         self.window.viewmodel.set_packer("lzma")
@@ -522,9 +552,7 @@ class SaveDialogFilterTests(unittest.TestCase):
         index = dialog.file_list.model().index(0, 0)
         option = QStyleOptionViewItem()
         option.initFrom(dialog.file_list)
-        option.state = (
-            QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_MouseOver
-        )
+        option.state = QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_MouseOver
         delegate = dialog.file_list.itemDelegate()
         delegate.initStyleOption(option, index)
         self.assertFalse(bool(option.state & QStyle.StateFlag.State_MouseOver))
@@ -536,9 +564,7 @@ class SaveDialogFilterTests(unittest.TestCase):
         index = dialog.file_list.model().index(0, 0)
         option = QStyleOptionViewItem()
         option.initFrom(dialog.file_list)
-        option.state = (
-            QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_MouseOver
-        )
+        option.state = QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_MouseOver
         delegate = dialog.file_list.itemDelegate()
         delegate.initStyleOption(option, index)
         self.assertTrue(bool(option.state & QStyle.StateFlag.State_MouseOver))
@@ -595,6 +621,23 @@ class SaveDialogFilterTests(unittest.TestCase):
         QApplication.processEvents()
         self.assertFalse(again.save_options_panel.isVisible())
         self.assertEqual(again.save_options_btn.arrowType(), Qt.ArrowType.RightArrow)
+
+    def test_expanded_save_options_survives_new_dialog(self) -> None:
+        dialog = SaveDialog(self.vm)
+        self.addCleanup(dialog.close)
+        dialog.show()
+        QApplication.processEvents()
+        dialog.save_options_btn.click()
+        QApplication.processEvents()
+        dialog.close()
+
+        again = SaveDialog(self.vm)
+        self.addCleanup(again.close)
+        again.show()
+        QApplication.processEvents()
+        self.assertTrue(again.save_options_panel.isVisible())
+        self.assertEqual(again.save_options_btn.arrowType(), Qt.ArrowType.DownArrow)
+        self.assertTrue(again.save_options_btn.isChecked())
 
 
 if __name__ == "__main__":
