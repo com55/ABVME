@@ -247,6 +247,49 @@ QCheckBox::indicator:checked:hover {
     border-color: #ffffff;
 }
 
+QTabWidget::pane {
+    border: 1px solid #454545;
+    background-color: #252526;
+}
+QTabBar::tab {
+    background-color: #3c3c3c;
+    color: #cccccc;
+    padding: 6px 12px;
+    border: 1px solid #454545;
+}
+QTabBar::tab:selected {
+    background-color: #252526;
+    border-bottom-color: #252526;
+}
+
+QLabel a {
+    color: #4fc3f7;
+}
+
+AboutDialog > QLabel {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#aboutInfoPage {
+    background-color: #252526;
+}
+
+QWidget#aboutInfoPage > QLabel {
+    background-color: #252526;
+    border: none;
+}
+
+QWidget#aboutInfoPanel {
+    background-color: #323232;
+    border-radius: 4px;
+}
+
+QWidget#aboutInfoPanel QLabel {
+    background-color: #323232;
+    border: none;
+}
+
 /* --- ComboBox --- */
 QComboBox {
     background-color: #3c3c3c;

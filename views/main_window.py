@@ -47,6 +47,8 @@ from services import StatusBarHandler
 from models import AssetInfo, EditResult
 from models.save_options import CRC_LABELS, PACKER_LABELS, RESOURCE_LABELS
 from views.overwrite_confirm import confirm_overwrite_existing
+from views.about_dialog import AboutDialog
+from utilities.app_info import window_title
 
 
 log = logging.getLogger("ABVME")
@@ -89,8 +91,10 @@ class ABVMEMainWindow(QMainWindow):
 
     def __init__(self, settings=None):
         super().__init__()
-        self.setWindowTitle("ABVME")
+        self.setWindowTitle(window_title())
+        self.setWindowIcon(QIcon(get_resource_str("assets/icon.ico")))
         self.setMinimumSize(1000, 600)
+        self.resize(1200, 700)
 
         # Create ViewModel
         self.viewmodel = MainViewModel(settings=settings)
@@ -266,6 +270,14 @@ class ABVMEMainWindow(QMainWindow):
 
         options_menu.aboutToShow.connect(self._sync_options_menu)
         self._sync_options_menu()
+
+        self.about_action = QAction("About", self)
+        self.about_action.triggered.connect(self._on_about_clicked)
+        menu_bar.addAction(self.about_action)
+
+    def _on_about_clicked(self) -> None:
+        dialog = AboutDialog(self)
+        dialog.exec()
 
     def _on_packer_option(self, action: QAction) -> None:
         self.viewmodel.set_packer(str(action.data()))

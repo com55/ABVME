@@ -63,7 +63,7 @@ class MenubarShowAllActionTests(unittest.TestCase):
         window = ABVMEMainWindow()
         titles = [action.text() for action in window.menuBar().actions()]
 
-        self.assertEqual(titles, ["&File", "&Asset", "&Options"])
+        self.assertEqual(titles, ["&File", "&Asset", "&Options", "About"])
 
     def test_exit_action_uses_x_mnemonic(self) -> None:
         window = ABVMEMainWindow()
@@ -77,7 +77,6 @@ class MenubarShowAllActionTests(unittest.TestCase):
         ]
 
         self.assertEqual(exit_texts, ["E&xit"])
-
 
 
 class MenuIconHelperTests(unittest.TestCase):

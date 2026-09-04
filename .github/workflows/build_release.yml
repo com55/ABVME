@@ -59,7 +59,10 @@ jobs:
             UnityPy
             archspec
           include-data-dir: assets=assets
-          include-data-files: styles.qss=styles.qss
+          include-data-files: |
+            styles.qss=styles.qss
+            LICENSE=LICENSE
+            pyproject.toml=pyproject.toml
           output-dir: dist_main
           output-file: ABVME.exe
 
@@ -146,7 +149,10 @@ jobs:
             UnityPy
             archspec
           include-data-dir: assets=assets
-          include-data-files: styles.qss=styles.qss
+          include-data-files: |
+            styles.qss=styles.qss
+            LICENSE=LICENSE
+            pyproject.toml=pyproject.toml
           output-dir: dist_main
           output-file: ABVME
 
