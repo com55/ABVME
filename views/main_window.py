@@ -52,6 +52,7 @@ from views.overwrite_confirm import confirm_overwrite_existing
 log = logging.getLogger("ABVME")
 
 _MENU_ICON_SIZE = 16
+_OPEN_FOLDER_CONFIRM_AFTER = 100
 
 
 def _show_save_finished_message(parent, success: bool, message: str) -> None:
@@ -179,6 +180,12 @@ class ABVMEMainWindow(QMainWindow):
         self.open_action.setIcon(_menu_icon("assets/folder-open-regular.svg"))
         self.open_action.triggered.connect(self._on_load_button_clicked)
         self._file_menu.addAction(self.open_action)
+
+        self.open_folder_action = QAction("Open Folder...", self)
+        self.open_folder_action.setShortcut("Ctrl+Shift+O")
+        self.open_folder_action.setIcon(_menu_icon("assets/folder-open-regular.svg"))
+        self.open_folder_action.triggered.connect(self._on_open_folder_clicked)
+        self._file_menu.addAction(self.open_folder_action)
 
         self.save_action = QAction("Save as...", self)
         self.save_action.setShortcut("Ctrl+Shift+S")
@@ -504,6 +511,36 @@ class ABVMEMainWindow(QMainWindow):
         )
         if files:
             self.viewmodel.load_files_from_paths(files)
+
+    def _on_open_folder_clicked(self) -> None:
+        directory = QFileDialog.getExistingDirectory(
+            self,
+            "Select Folder",
+            self.viewmodel.get_open_dialog_start_directory(),
+        )
+        if not directory:
+            return
+        self.viewmodel.remember_open_directory(directory)
+        files = self.viewmodel.bundle_files_in_directory(directory)
+        if not files:
+            self.viewmodel.status_message.emit(
+                "No asset bundles were found in the selected folder.",
+                logging.WARNING,
+            )
+            return
+        if len(files) > _OPEN_FOLDER_CONFIRM_AFTER:
+            reply = QMessageBox.question(
+                self,
+                "Open Folder",
+                (
+                    f"The selected folder contains {len(files)} asset bundles.\n\n"
+                    "Load them all?"
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        self.viewmodel.load_files_from_paths(files)
 
     def _on_table_selection_changed(self, selected_assets: list[AssetInfo]):
         """Handle table selection changed"""

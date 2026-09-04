@@ -23,6 +23,7 @@ from services import LoaderWorker, EditWorker, SaveWorker
 log = logging.getLogger("ABVME")
 
 _LAST_OPEN_DIRECTORY_KEY = "last_open_directory"
+_BUNDLE_SUFFIXES = {".bundle", ".unity3d"}
 
 
 def desktop_directory() -> str:
@@ -215,6 +216,13 @@ class MainViewModel(QObject):
         remembered = self._settings.value(_LAST_OPEN_DIRECTORY_KEY, "", type=str)
         return _existing_directory(remembered) or desktop_directory()
 
+    def remember_open_directory(self, directory: str) -> None:
+        existing = _existing_directory(directory)
+        if existing is None:
+            return
+        self._settings.setValue(_LAST_OPEN_DIRECTORY_KEY, existing)
+        self._settings.sync()
+
     def remember_open_directory_from_paths(self, file_paths: list[str]) -> None:
         for path_str in file_paths:
             if not path_str:
@@ -223,9 +231,20 @@ class MainViewModel(QObject):
             existing = _existing_directory(str(folder))
             if existing is None:
                 continue
-            self._settings.setValue(_LAST_OPEN_DIRECTORY_KEY, existing)
-            self._settings.sync()
+            self.remember_open_directory(existing)
             return
+
+    def bundle_files_in_directory(self, directory: str) -> list[str]:
+        folder = Path(directory)
+        if not folder.is_dir():
+            return []
+        files = [
+            str(path)
+            for path in folder.iterdir()
+            if path.is_file() and path.suffix.lower() in _BUNDLE_SUFFIXES
+        ]
+        files.sort(key=lambda path: Path(path).name.lower())
+        return files
 
     def get_output_dialog_start_directory(self) -> str:
         remembered = _existing_directory(self._output_directory or "")
