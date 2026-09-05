@@ -43,6 +43,13 @@ def _unity() -> SimpleNamespace:
     )
 
 
+def warmup_unitypy() -> None:
+    """Import the UnityPy modules used on first file open."""
+    from UnityPy import Environment  # noqa: F401
+
+    _unity()
+
+
 class ResultStatus(str, Enum):
     """Status of operation results"""
 

@@ -4,6 +4,7 @@ Composes all UI components and wires them with ViewModel
 """
 
 import logging
+import threading
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
@@ -18,6 +19,7 @@ from PySide6.QtGui import (
     QIcon,
     QPixmap,
     QResizeEvent,
+    QShowEvent,
 )
 from PySide6.QtWidgets import (
     QMainWindow,
@@ -99,6 +101,8 @@ class ABVMEMainWindow(QMainWindow):
         # Create ViewModel
         self.viewmodel = MainViewModel(settings=settings)
         self._auto_fit_columns_on_load = True
+        self._unitypy_warmup_thread: threading.Thread | None = None
+        self._drop_overlay_warmed = False
 
         # Initialize UI
         self._setup_status_bar()
@@ -902,6 +906,42 @@ class ABVMEMainWindow(QMainWindow):
             return
 
         event.ignore()
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        self._start_unitypy_warmup()
+        if not self._drop_overlay_warmed:
+            QTimer.singleShot(0, self._warmup_drop_overlay)
+
+    def _warmup_drop_overlay(self) -> None:
+        if self._drop_overlay_warmed:
+            return
+        self._drop_overlay_warmed = True
+        dummy = DropDecision(
+            DropAction.OPEN,
+            ("warmup.bundle",),
+            "Open Asset Bundles",
+            "warmup.bundle",
+        )
+        self.setUpdatesEnabled(False)
+        try:
+            self.drop_overlay.show_decision(dummy)
+            self.drop_overlay.grab()
+            self.drop_overlay.clear()
+        finally:
+            self.setUpdatesEnabled(True)
+
+    def _start_unitypy_warmup(self) -> None:
+        if self._unitypy_warmup_thread is not None:
+            return
+        from models.asset_model import warmup_unitypy
+
+        self._unitypy_warmup_thread = threading.Thread(
+            target=warmup_unitypy,
+            daemon=True,
+            name="unitypy-warmup",
+        )
+        self._unitypy_warmup_thread.start()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         if (
