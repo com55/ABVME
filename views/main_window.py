@@ -687,21 +687,49 @@ class ABVMEMainWindow(QMainWindow):
             ):
                 if not self._confirm_unmatched_textasset_replace(asset, file_path):
                     return
+            elif not self._confirm_replace(asset, file_path):
+                return
             self.viewmodel.edit_asset(asset, file_path)
+
+    def _ask_yes_no(self, title: str, text: str) -> bool:
+        self.raise_()
+        self.activateWindow()
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(title)
+        box.setText(text)
+        box.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        box.setDefaultButton(QMessageBox.StandardButton.Yes)
+        box.setWindowModality(Qt.WindowModality.ApplicationModal)
+        box.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        # activateWindow() has no effect until the dialog is visible; after an
+        # Explorer drop Windows also will not steal focus, so stay-on-top.
+        box.show()
+        box.raise_()
+        box.activateWindow()
+        handle = box.windowHandle()
+        if handle is not None:
+            handle.requestActivate()
+        return box.exec() == QMessageBox.StandardButton.Yes
+
+    def _confirm_replace(self, asset: AssetInfo, file_path: str) -> bool:
+        return self._ask_yes_no(
+            "Confirm Replace",
+            f"Replace '{asset.name}' with '{Path(file_path).name}'?",
+        )
 
     def _confirm_unmatched_textasset_replace(
         self, asset: AssetInfo, file_path: str
     ) -> bool:
-        reply = QMessageBox.question(
-            self,
+        return self._ask_yes_no(
             "Confirm Replace",
             (
                 f"The suffix of '{Path(file_path).name}' is not in the container "
                 f"of '{asset.name}'. Replace anyway?"
             ),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        return reply == QMessageBox.StandardButton.Yes
 
     def _on_export_button_clicked(self):
         """Handle export button click"""
@@ -883,16 +911,9 @@ class ABVMEMainWindow(QMainWindow):
 
         first_file = decision.file_paths[0]
         if decision.action == DropAction.REPLACE:
-            if asset.obj_type.name == "Texture2D":
-                reply = QMessageBox.question(
-                    self,
-                    "Confirm Replace",
-                    f"Replace '{asset.name}' with '{Path(first_file).name}'?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                )
-                if reply != QMessageBox.StandardButton.Yes:
-                    event.ignore()
-                    return
+            if not self._confirm_replace(asset, first_file):
+                event.ignore()
+                return
             self.viewmodel.edit_asset(asset, first_file)
             event.acceptProposedAction()
             return

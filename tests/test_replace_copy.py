@@ -50,7 +50,9 @@ class ReplaceCopyViewModelTests(unittest.TestCase):
         self.started: list[str] = []
         self.status: list[tuple[str, int]] = []
         self.vm.edit_started.connect(self.started.append)
-        self.vm.status_message.connect(lambda msg, level: self.status.append((msg, level)))
+        self.vm.status_message.connect(
+            lambda msg, level: self.status.append((msg, level))
+        )
 
     @patch("viewmodels.main_viewmodel.EditWorker")
     def test_edit_asset_emits_replacing_status(self, worker_cls: MagicMock) -> None:
@@ -107,7 +109,9 @@ class ReplaceCopyWindowTests(unittest.TestCase):
         messages: list[tuple[str, int]] = []
         self.window.viewmodel.get_single_selected_asset = MagicMock(return_value=asset)
         self.window.viewmodel.is_editing_supported = MagicMock(return_value=False)
-        self.window._on_status_message = lambda msg, level: messages.append((msg, level))
+        self.window._on_status_message = lambda msg, level: messages.append(
+            (msg, level)
+        )
 
         self.window._on_edit_button_clicked()
 
@@ -116,25 +120,78 @@ class ReplaceCopyWindowTests(unittest.TestCase):
             [("Replace is not supported for Mesh.", logging.WARNING)],
         )
 
-    @patch("views.main_window.QMessageBox.question")
+    @patch.object(ABVMEMainWindow, "_ask_yes_no")
     @patch("views.main_window.QFileDialog.getOpenFileName")
     def test_file_dialog_caption_is_select_replacement_file(
         self,
         get_open: MagicMock,
-        question: MagicMock,
+        ask: MagicMock,
     ) -> None:
         get_open.return_value = ("", "")
         asset = FakeAsset(type_name="Texture2D", container="assets/icon.png")
         self.window.viewmodel.get_single_selected_asset = MagicMock(return_value=asset)
         self.window.viewmodel.is_editing_supported = MagicMock(return_value=True)
-        self.window.viewmodel.get_edit_file_filter = MagicMock(return_value="All Files (*.*)")
+        self.window.viewmodel.get_edit_file_filter = MagicMock(
+            return_value="All Files (*.*)"
+        )
 
         self.window._on_edit_button_clicked()
 
         self.assertEqual(get_open.call_args.args[1], "Select replacement file")
-        question.assert_not_called()
+        ask.assert_not_called()
 
-    @patch("views.main_window.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes)
+    @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=True)
+    @patch(
+        "views.main_window.QFileDialog.getOpenFileName",
+        return_value=("icon.png", ""),
+    )
+    def test_file_dialog_texture_confirms_replace(
+        self,
+        _get_open: MagicMock,
+        ask: MagicMock,
+    ) -> None:
+        asset = FakeAsset(
+            name="Icon", type_name="Texture2D", container="assets/icon.png"
+        )
+        self.window.viewmodel.get_single_selected_asset = MagicMock(return_value=asset)
+        self.window.viewmodel.is_editing_supported = MagicMock(return_value=True)
+        self.window.viewmodel.get_edit_file_filter = MagicMock(
+            return_value="All Files (*.*)"
+        )
+        self.window.viewmodel.edit_asset = MagicMock(return_value=True)
+
+        self.window._on_edit_button_clicked()
+
+        self.assertTrue(ask.called)
+        self.assertEqual(ask.call_args.args[0], "Confirm Replace")
+        self.assertEqual(ask.call_args.args[1], "Replace 'Icon' with 'icon.png'?")
+        self.window.viewmodel.edit_asset.assert_called_once_with(asset, "icon.png")
+
+    @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=False)
+    @patch(
+        "views.main_window.QFileDialog.getOpenFileName",
+        return_value=("icon.png", ""),
+    )
+    def test_file_dialog_texture_confirm_no_skips_edit(
+        self,
+        _get_open: MagicMock,
+        _ask: MagicMock,
+    ) -> None:
+        asset = FakeAsset(
+            name="Icon", type_name="Texture2D", container="assets/icon.png"
+        )
+        self.window.viewmodel.get_single_selected_asset = MagicMock(return_value=asset)
+        self.window.viewmodel.is_editing_supported = MagicMock(return_value=True)
+        self.window.viewmodel.get_edit_file_filter = MagicMock(
+            return_value="All Files (*.*)"
+        )
+        self.window.viewmodel.edit_asset = MagicMock(return_value=True)
+
+        self.window._on_edit_button_clicked()
+
+        self.window.viewmodel.edit_asset.assert_not_called()
+
+    @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=True)
     @patch(
         "views.main_window.QFileDialog.getOpenFileName",
         return_value=("hero.json", ""),
@@ -142,7 +199,7 @@ class ReplaceCopyWindowTests(unittest.TestCase):
     def test_file_dialog_textasset_unmatched_suffix_confirms(
         self,
         _get_open: MagicMock,
-        question: MagicMock,
+        ask: MagicMock,
     ) -> None:
         asset = FakeAsset(
             name="hero",
@@ -151,27 +208,29 @@ class ReplaceCopyWindowTests(unittest.TestCase):
         )
         self.window.viewmodel.get_single_selected_asset = MagicMock(return_value=asset)
         self.window.viewmodel.is_editing_supported = MagicMock(return_value=True)
-        self.window.viewmodel.get_edit_file_filter = MagicMock(return_value="All Files (*.*)")
+        self.window.viewmodel.get_edit_file_filter = MagicMock(
+            return_value="All Files (*.*)"
+        )
         self.window.viewmodel.edit_asset = MagicMock(return_value=True)
 
         self.window._on_edit_button_clicked()
 
-        self.assertEqual(question.call_args.args[1], "Confirm Replace")
+        self.assertEqual(ask.call_args.args[0], "Confirm Replace")
         self.assertEqual(
-            question.call_args.args[2],
+            ask.call_args.args[1],
             "The suffix of 'hero.json' is not in the container of 'hero'. Replace anyway?",
         )
         self.window.viewmodel.edit_asset.assert_called_once_with(asset, "hero.json")
 
-    @patch("views.main_window.QMessageBox.question")
+    @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=True)
     @patch(
         "views.main_window.QFileDialog.getOpenFileName",
         return_value=("hero.skel", ""),
     )
-    def test_file_dialog_textasset_matched_suffix_skips_confirm(
+    def test_file_dialog_textasset_matched_suffix_confirms(
         self,
         _get_open: MagicMock,
-        question: MagicMock,
+        ask: MagicMock,
     ) -> None:
         asset = FakeAsset(
             name="hero",
@@ -180,15 +239,19 @@ class ReplaceCopyWindowTests(unittest.TestCase):
         )
         self.window.viewmodel.get_single_selected_asset = MagicMock(return_value=asset)
         self.window.viewmodel.is_editing_supported = MagicMock(return_value=True)
-        self.window.viewmodel.get_edit_file_filter = MagicMock(return_value="All Files (*.*)")
+        self.window.viewmodel.get_edit_file_filter = MagicMock(
+            return_value="All Files (*.*)"
+        )
         self.window.viewmodel.edit_asset = MagicMock(return_value=True)
 
         self.window._on_edit_button_clicked()
 
-        question.assert_not_called()
+        self.assertTrue(ask.called)
+        self.assertEqual(ask.call_args.args[0], "Confirm Replace")
+        self.assertEqual(ask.call_args.args[1], "Replace 'hero' with 'hero.skel'?")
         self.window.viewmodel.edit_asset.assert_called_once_with(asset, "hero.skel")
 
-    @patch("views.main_window.QMessageBox.question", return_value=QMessageBox.StandardButton.No)
+    @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=False)
     @patch(
         "views.main_window.QFileDialog.getOpenFileName",
         return_value=("hero.json", ""),
@@ -196,7 +259,7 @@ class ReplaceCopyWindowTests(unittest.TestCase):
     def test_file_dialog_textasset_confirm_no_skips_edit(
         self,
         _get_open: MagicMock,
-        _question: MagicMock,
+        _ask: MagicMock,
     ) -> None:
         asset = FakeAsset(
             name="hero",
@@ -205,12 +268,44 @@ class ReplaceCopyWindowTests(unittest.TestCase):
         )
         self.window.viewmodel.get_single_selected_asset = MagicMock(return_value=asset)
         self.window.viewmodel.is_editing_supported = MagicMock(return_value=True)
-        self.window.viewmodel.get_edit_file_filter = MagicMock(return_value="All Files (*.*)")
+        self.window.viewmodel.get_edit_file_filter = MagicMock(
+            return_value="All Files (*.*)"
+        )
         self.window.viewmodel.edit_asset = MagicMock(return_value=True)
 
         self.window._on_edit_button_clicked()
 
         self.window.viewmodel.edit_asset.assert_not_called()
+
+
+class AskYesNoDialogTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = _app()
+
+    def setUp(self) -> None:
+        self.window = ABVMEMainWindow()
+
+    def test_ask_yes_no_keeps_dialog_in_front(self) -> None:
+        boxes: list[QMessageBox] = []
+
+        def fake_exec(box: QMessageBox) -> QMessageBox.StandardButton:
+            boxes.append(box)
+            return QMessageBox.StandardButton.Yes
+
+        with patch.object(QMessageBox, "exec", fake_exec):
+            result = self.window._ask_yes_no("Confirm Replace", "body")
+
+        self.assertTrue(result)
+        self.assertEqual(len(boxes), 1)
+        box = boxes[0]
+        flags = box.windowFlags()
+        self.assertTrue(flags & Qt.WindowType.WindowStaysOnTopHint)
+        self.assertEqual(box.windowModality(), Qt.WindowModality.ApplicationModal)
+        self.assertTrue(box.isVisible())
+        self.assertEqual(box.windowTitle(), "Confirm Replace")
+        self.assertEqual(box.text(), "body")
+        box.hide()
 
 
 class ReplaceCopyDropTests(unittest.TestCase):
@@ -242,18 +337,20 @@ class ReplaceCopyDropTests(unittest.TestCase):
         self._mime = mime
         return event
 
-    @patch("views.main_window.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes)
-    def test_texture_drop_confirm_copy(self, question: MagicMock) -> None:
-        asset = FakeAsset(name="Icon", type_name="Texture2D", container="assets/icon.png")
+    @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=True)
+    def test_texture_drop_confirm_copy(self, ask: MagicMock) -> None:
+        asset = FakeAsset(
+            name="Icon", type_name="Texture2D", container="assets/icon.png"
+        )
         self.window.viewmodel.get_single_selected_asset = MagicMock(return_value=asset)
         self.window.viewmodel.is_editing_supported = MagicMock(return_value=True)
         self.window.viewmodel.edit_asset = MagicMock(return_value=True)
 
         self.window.dropEvent(self._drop(self.png_path))
 
-        self.assertEqual(question.call_args.args[1], "Confirm Replace")
+        self.assertEqual(ask.call_args.args[0], "Confirm Replace")
         self.assertEqual(
-            question.call_args.args[2],
+            ask.call_args.args[1],
             f"Replace 'Icon' with '{Path(self.png_path).name}'?",
         )
         self.window.viewmodel.edit_asset.assert_called_once()
@@ -261,8 +358,8 @@ class ReplaceCopyDropTests(unittest.TestCase):
         self.assertIs(called_asset, asset)
         self.assertEqual(Path(called_path), Path(self.png_path))
 
-    @patch("views.main_window.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes)
-    def test_textasset_drop_unmatched_suffix_confirm_copy(self, question: MagicMock) -> None:
+    @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=True)
+    def test_textasset_drop_unmatched_suffix_confirm_copy(self, ask: MagicMock) -> None:
         asset = FakeAsset(
             name="hero",
             type_name="TextAsset",
@@ -274,15 +371,38 @@ class ReplaceCopyDropTests(unittest.TestCase):
 
         self.window.dropEvent(self._drop(self.json_path))
 
-        self.assertEqual(question.call_args.args[1], "Confirm Replace")
+        self.assertEqual(ask.call_args.args[0], "Confirm Replace")
         self.assertEqual(
-            question.call_args.args[2],
+            ask.call_args.args[1],
             "The suffix of 'hero.json' is not in the container of 'hero'. Replace anyway?",
         )
         self.window.viewmodel.edit_asset.assert_called_once()
         called_asset, called_path = self.window.viewmodel.edit_asset.call_args.args
         self.assertIs(called_asset, asset)
         self.assertEqual(Path(called_path), Path(self.json_path))
+
+    @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=True)
+    def test_textasset_drop_matched_suffix_confirms(self, ask: MagicMock) -> None:
+        asset = FakeAsset(
+            name="hero",
+            type_name="TextAsset",
+            container="assets/hero.skel.bytes",
+        )
+        skel_path = str(Path(self._tmp.name) / "hero.skel")
+        Path(skel_path).write_bytes(b"skel")
+        self.window.viewmodel.get_single_selected_asset = MagicMock(return_value=asset)
+        self.window.viewmodel.is_editing_supported = MagicMock(return_value=True)
+        self.window.viewmodel.edit_asset = MagicMock(return_value=True)
+
+        self.window.dropEvent(self._drop(skel_path))
+
+        self.assertTrue(ask.called)
+        self.assertEqual(ask.call_args.args[0], "Confirm Replace")
+        self.assertEqual(ask.call_args.args[1], "Replace 'hero' with 'hero.skel'?")
+        self.window.viewmodel.edit_asset.assert_called_once()
+        called_asset, called_path = self.window.viewmodel.edit_asset.call_args.args
+        self.assertIs(called_asset, asset)
+        self.assertEqual(Path(called_path), Path(skel_path))
 
 
 class ReplaceCopyModelTests(unittest.TestCase):
