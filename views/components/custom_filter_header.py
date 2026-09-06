@@ -5,6 +5,18 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QIcon, QPainter, QPen, QColor, QPixmap
 from PySide6.QtCore import QPoint, Qt, Signal
 
+from models.asset_model import EMPTY_CELL_TEXT
+
+
+def filter_checkbox_label(value: object) -> str:
+    if value == "":
+        return EMPTY_CELL_TEXT
+    return str(value)
+
+
+def selected_checkbox_filter_values(boxes: list[QCheckBox]) -> list:
+    return [cb.property("filter_value") for cb in boxes if cb.isChecked()]
+
 class FilterHeader(QHeaderView):
     # Signal: col_index, filter_value
     filter_changed = Signal(int, object) 
@@ -24,8 +36,15 @@ class FilterHeader(QHeaderView):
     def set_filter_boxes(self, col, values):
         """กำหนดให้คอลัมน์นี้ใช้ระบบ Checkbox ตามค่าที่ส่งมา"""
         sorted_values = sorted(list(set(values)))
+        previous_unique = self._unique_values.get(col, [])
+        previous_active = self.active_filters.get(col)
         self._unique_values[col] = sorted_values
         if col not in self.active_filters:
+            self.active_filters[col] = sorted_values
+            return
+        # If every previous value was selected, treat this as unfiltered and
+        # include newly appeared types (e.g. Display all assets).
+        if isinstance(previous_active, list) and set(previous_active) == set(previous_unique):
             self.active_filters[col] = sorted_values
 
     def paintSection(self, painter, rect, logicalIndex):
@@ -81,7 +100,8 @@ class FilterHeader(QHeaderView):
 
     def contextMenuEvent(self, event):  # type: ignore[override]
         col = self.logicalIndexAt(event.pos())
-        if col == -1: return
+        if col == -1:
+            return
         # --- แก้ไข: คำนวณตำแหน่งมุมซ้ายล่างของ Header Section นั้น ---
         # sectionViewportPosition(col) จะได้ค่า X ของคอลัมน์เทียบกับ Header
         x = self.sectionViewportPosition(col)
@@ -119,7 +139,8 @@ class FilterHeader(QHeaderView):
             # ... (Checkbox Logic) ...
             unique_vals = self._unique_values[col]
             current_filter = self.active_filters.get(col, unique_vals)
-            if not isinstance(current_filter, list): current_filter = unique_vals
+            if not isinstance(current_filter, list):
+                current_filter = unique_vals
             
             checkbox_widgets: list[QCheckBox] = []
             
@@ -142,7 +163,8 @@ class FilterHeader(QHeaderView):
             menu.addSeparator()
             
             for val in unique_vals:
-                checkbox = QCheckBox(str(val))
+                checkbox = QCheckBox(filter_checkbox_label(val))
+                checkbox.setProperty("filter_value", val)
                 checkbox.setChecked(val in current_filter and not all_selected)
                 
                 def on_toggled(checked, v=val, widgets_ref=checkbox_widgets):
@@ -150,7 +172,7 @@ class FilterHeader(QHeaderView):
                         select_all_checkbox.blockSignals(True)
                         select_all_checkbox.setChecked(False)
                         select_all_checkbox.blockSignals(False)
-                    current_selected = [cb.text() for cb in widgets_ref if cb.isChecked()]
+                    current_selected = selected_checkbox_filter_values(widgets_ref)
                     self._apply_filter(col, current_selected)
                     is_all = len(current_selected) == len(unique_vals)
                     select_all_checkbox.blockSignals(True)

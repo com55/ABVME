@@ -38,6 +38,20 @@ class PhotoViewer(QtWidgets.QGraphicsView):
         self.setRenderHints(
             QtGui.QPainter.RenderHint.Antialiasing |
             QtGui.QPainter.RenderHint.SmoothPixmapTransform)
+        self.viewport().setContextMenuPolicy(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.viewport().customContextMenuRequested.connect(
+            self._show_context_menu
+        )
+
+    def _show_context_menu(self, pos: QtCore.QPoint) -> None:
+        menu = QtWidgets.QMenu(self)
+        copy_action = menu.addAction("Copy image")
+        copy_action.setEnabled(self.hasPhoto())
+        if menu.exec(self.viewport().mapToGlobal(pos)) is copy_action:
+            if self.hasPhoto():
+                QtWidgets.QApplication.clipboard().setPixmap(self._photo.pixmap())
 
     def hasPhoto(self):
         return not self._empty

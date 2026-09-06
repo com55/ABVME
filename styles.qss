@@ -57,17 +57,17 @@ QTableWidget, QListWidget {
     selection-background-color: #094771; /* สีพื้นหลังตอนเลือกแถว */
     selection-color: white;
     outline: 0; /* ลบเส้นประเวลาคลิกเลือก */
+    color: #cccccc;
 }
 
 /* เอฟเฟคตอนเอาเมาส์ชี้ (Hover) */
-QTableWidget::item:hover, QListWidget::item:hover {
+QListWidget::item:hover {
     /* background-color: #3e3e42; */
     color: white;
 }
 
-/* จัดการสีตัวอักษรใน Item ปกติ */
-QTableWidget::item, QListWidget::item {
-    color: #cccccc;
+/* จัดการ padding ใน Item ปกติ — อย่าใส่ color ที่นี่ จะทับ setForeground ของไฟล์ที่เปลี่ยน */
+QListWidget::item {
     padding: 1px; /* เพิ่มระยะห่างให้ดูไม่อึดอัด */
 }
 
@@ -154,13 +154,140 @@ QMenuBar {
 QMenuBar::item:selected {
     background-color: #505050;
 }
+QMenuBar::item:disabled {
+    color: #6a6a6a;
+}
 QMenu {
     background-color: #252526;
     color: #cccccc;
     border: 1px solid #454545;
+    padding: 2px;
+}
+QMenu::item {
+    padding: 2px 4px 2px 8px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background-image: url(assets/menu-gutter-line.svg);
+    background-repeat: repeat-y;
+    background-position: left;
 }
 QMenu::item:selected {
     background-color: #094771;
+    background-image: url(assets/menu-gutter-line.svg);
+    background-repeat: repeat-y;
+    background-position: left;
+    border: 1px solid #007acc;
+}
+QMenu::item:disabled {
+    color: #6a6a6a;
+}
+QMenu::item:selected:disabled {
+    color: #6a6a6a;
+    background-color: transparent;
+}
+
+QMenu::icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 4px;
+}
+
+QMenu::indicator {
+    subcontrol-origin: padding;
+    subcontrol-position: left center;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    margin: 0px 6px 0px 0px;
+    border: 1px solid #8a8a8a;
+    border-radius: 2px;
+    background-color: #1e1e1e;
+}
+
+QMenu::indicator:non-exclusive:checked,
+QMenu::indicator:exclusive:checked {
+    border-color: #4fc3f7;
+    background-color: transparent;
+    image: url(assets/check-solid.svg);
+}
+QMenu::indicator:non-exclusive:unchecked:selected,
+QMenu::indicator:exclusive:unchecked:selected {
+    border-color: #cccccc;
+    background-color: transparent;
+}
+QMenu::indicator:non-exclusive:checked:selected,
+QMenu::indicator:exclusive:checked:selected {
+    border-color: #ffffff;
+    background-color: transparent;
+    image: url(assets/check-solid.svg);
+}
+
+QCheckBox {
+    spacing: 6px;
+}
+QMenu QCheckBox {
+    margin-left: 4px;
+}
+QCheckBox::indicator {
+    width: 11px;
+    height: 11px;
+    border: 1px solid #8a8a8a;
+    border-radius: 2px;
+    background-color: #1e1e1e;
+}
+QCheckBox::indicator:hover {
+    border-color: #cccccc;
+}
+QCheckBox::indicator:checked {
+    border-color: #4fc3f7;
+    background-color: #007acc;
+    image: url(assets/check-solid.svg);
+}
+QCheckBox::indicator:checked:hover {
+    border-color: #ffffff;
+}
+
+QTabWidget::pane {
+    border: 1px solid #454545;
+    background-color: #252526;
+}
+QTabBar::tab {
+    background-color: #3c3c3c;
+    color: #cccccc;
+    padding: 6px 12px;
+    border: 1px solid #454545;
+}
+QTabBar::tab:selected {
+    background-color: #252526;
+    border-bottom-color: #252526;
+}
+
+QLabel a {
+    color: #4fc3f7;
+}
+
+AboutDialog > QLabel {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#aboutInfoPage {
+    background-color: #252526;
+}
+
+QWidget#aboutInfoPage > QLabel {
+    background-color: #252526;
+    border: none;
+}
+
+QWidget#aboutInfoPanel {
+    background-color: #323232;
+    border-radius: 4px;
+}
+
+QWidget#aboutInfoPanel QLabel {
+    background-color: #323232;
+    border: none;
 }
 
 /* --- ComboBox --- */
@@ -220,6 +347,66 @@ QComboBox QAbstractItemView::item:selected {
     color: white;
 }
 
+/* --- Spin boxes: match ComboBox frame; custom up/down arrows --- */
+QSpinBox,
+QDoubleSpinBox {
+    background-color: #3c3c3c;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    padding: 5px 24px 5px 10px;
+    color: #cccccc;
+    min-width: 100px;
+}
+
+QSpinBox:hover,
+QDoubleSpinBox:hover {
+    border-color: #007acc;
+}
+
+QSpinBox:focus,
+QDoubleSpinBox:focus {
+    border: 1px solid #007acc;
+}
+
+QSpinBox::up-button,
+QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    border: none;
+    background: transparent;
+}
+
+QSpinBox::down-button,
+QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    border: none;
+    background: transparent;
+}
+
+QSpinBox::up-button:hover,
+QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover,
+QDoubleSpinBox::down-button:hover {
+    background-color: #4a4a4a;
+}
+
+QSpinBox::up-arrow,
+QDoubleSpinBox::up-arrow {
+    image: url(assets/angle-up-solid.svg);
+    width: 10px;
+    height: 10px;
+}
+
+QSpinBox::down-arrow,
+QDoubleSpinBox::down-arrow {
+    image: url(assets/angle-down-solid.svg);
+    width: 10px;
+    height: 10px;
+}
+
 /* --- List Widget --- */
 QListWidget {
     background-color: #252526;
@@ -227,11 +414,11 @@ QListWidget {
     selection-background-color: #094771;
     selection-color: white;
     outline: 0;
+    color: #cccccc;
 }
 
 QListWidget::item {
     padding: 5px;
-    color: #cccccc;
 }
 
 QListWidget::item:hover {

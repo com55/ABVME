@@ -22,7 +22,10 @@ class StatusBarHandler(logging.Handler):
 
     def emit(self, record):
         """Emit log record to UI via signal"""
-        msg = self.format(record)
-        # Forward to UI through Signal (thread-safe)
-        self.signal.emit(msg, record.levelno)
+        try:
+            msg = self.format(record)
+            self.signal.emit(msg, record.levelno)
+        except RuntimeError:
+            # Window/signal may already be gone when later tests log.
+            pass
 

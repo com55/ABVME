@@ -5,7 +5,7 @@ Preview Panel Widget - View component for displaying asset previews
 import logging
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QStackedWidget, QTextEdit, QLabel, QTabWidget
+    QWidget, QVBoxLayout, QStackedWidget, QTextEdit, QPlainTextEdit, QLabel, QTabWidget
 )
 from PIL.Image import Image
 
@@ -22,6 +22,7 @@ class PreviewPanelWidget(QWidget):
     
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        self._dump_asset: AssetInfo | None = None
         self._setup_ui()
         
     def _setup_ui(self):
@@ -65,18 +66,23 @@ class PreviewPanelWidget(QWidget):
         self.stack.setCurrentIndex(self.placeholder_index)
         
         # Add Preview tab
-        self.tab_widget.addTab(self.stack, "Preview")
+        self.preview_tab_index = self.tab_widget.addTab(self.stack, "Preview")
         
-        # ===== Tab 2: Dump (parsed_data JSON) =====
-        self.dump_editor = QTextEdit()
+        # ===== Tab 2: Dump (parsed object text) =====
+        self.dump_editor = QPlainTextEdit()
         self.dump_editor.setReadOnly(True)
-        self.dump_editor.setPlaceholderText("Select an asset to view its parsed data.")
-        self.tab_widget.addTab(self.dump_editor, "Dump")
+        self.dump_editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.dump_editor.setPlaceholderText(
+            "Select an asset, then open this tab to load parsed data."
+        )
+        self.dump_tab_index = self.tab_widget.addTab(self.dump_editor, "Dump")
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
         
         layout.addWidget(self.tab_widget)
         
     def show_placeholder(self, message: str = "Select an asset from the list to view its preview."):
         """Show placeholder with message and clear dump editor (for no asset selected)"""
+        self._dump_asset = None
         self._show_preview_placeholder(message)
         self.dump_editor.clear()
         
@@ -84,6 +90,16 @@ class PreviewPanelWidget(QWidget):
         """Show placeholder in Preview tab only (keeps dump editor content)"""
         self.placeholder.setText(message)
         self.stack.setCurrentIndex(self.placeholder_index)
+
+    def _on_tab_changed(self, index: int) -> None:
+        if index == self.dump_tab_index:
+            self._fill_dump()
+
+    def _fill_dump(self) -> None:
+        if self._dump_asset is None:
+            self.dump_editor.clear()
+            return
+        self.dump_editor.setPlainText(self._dump_asset.get_dump_text())
         
     def show_asset_preview(self, asset: AssetInfo):
         """
@@ -97,17 +113,23 @@ class PreviewPanelWidget(QWidget):
             return
 
         try:
+            self._dump_asset = asset
             preview_result = asset.get_preview()
-            
-            # Always populate dump editor with parsed data
-            self.dump_editor.setText(preview_result.parsed_data)
-            
-            if preview_result.status != ResultStatus.COMPLETE:
-                self._show_preview_placeholder(
-                    f"Preview failed for {asset.obj_type.name} (Status: {preview_result.status.value}):\n"
-                    f"{preview_result.message}"
+            if self.tab_widget.currentIndex() == self.dump_tab_index:
+                self._fill_dump()
+            else:
+                self.dump_editor.clear()
+
+            is_previewable = (
+                preview_result.status == ResultStatus.COMPLETE
+                and preview_result.asset_type in ("Texture2D", "TextAsset")
+            )
+            if not is_previewable:
+                self._show_preview_placeholder("Preview is unavailable.")
+                log.info(
+                    f"Preview unavailable for {asset.obj_type.name} "
+                    f"(Status: {preview_result.status.value}): {preview_result.message}"
                 )
-                log.info(f"Preview failed for {asset.obj_type.name} (Status: {preview_result.status.value}): {preview_result.message}")
                 return
 
             if preview_result.asset_type == "Texture2D":
@@ -117,27 +139,13 @@ class PreviewPanelWidget(QWidget):
                     self.stack.setCurrentIndex(self.image_index)
                     log.info(f"Showing Texture2D preview: {asset.name}")
                 else:
-                    self._show_preview_placeholder("Texture2D data is empty.")
+                    self._show_preview_placeholder("Preview is unavailable.")
 
             elif preview_result.asset_type == "TextAsset":
                 # Data is str
-                self.text_editor.setText(str(preview_result.data))
+                self.text_editor.setPlainText(str(preview_result.data))
                 self.stack.setCurrentIndex(self.text_index)
                 log.info(f"Showing TextAsset preview: {asset.name}")
-
-            elif preview_result.asset_type == "Mesh":
-                # Data is str (exported OBJ data)
-                text_data = preview_result.data if preview_result.data else "No Mesh data available."
-                self._show_preview_placeholder(
-                    f"Mesh preview (Unsupported):\n"
-                    f"Raw OBJ data snippet:\n{str(text_data)[:500]}..."
-                )
-                log.warning(f"Mesh preview unsupported: {asset.name}")
-
-            else:
-                self._show_preview_placeholder(
-                    f"Preview not supported for type: {preview_result.asset_type}"
-                )
 
         except Exception as e:
             log.error(f"Error generating preview: {e}", exc_info=True)
@@ -154,4 +162,3 @@ class PreviewPanelWidget(QWidget):
             self.placeholder,
             self.dump_editor,
         }
-

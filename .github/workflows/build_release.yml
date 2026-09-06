@@ -44,61 +44,183 @@ jobs:
       - name: Install Dependencies
         run: uv export --no-hashes -o requirements.txt && pip install -r requirements.txt
 
+      - name: Get version for build
+        id: build_version
+        shell: powershell
+        run: |
+          if ("${{ inputs.tag_name }}" -ne "") {
+            $version = "${{ inputs.tag_name }}".TrimStart("v")
+          } elseif ("${{ github.ref }}" -match "refs/tags/v(.+)") {
+            $version = $matches[1]
+          } else {
+            $version = (Select-String -Path pyproject.toml -Pattern '^version = "(.+)"').Matches.Groups[1].Value
+          }
+          if (-not $version) { $version = "0.0.0" }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          $version | Out-File -FilePath VERSION -Encoding utf8 -NoNewline
+          echo "Building version: $version"
+
       # Build Main App (Windows)
       - name: Build Main App (ABVME) 🏗️
         uses: Nuitka/Nuitka-Action@main
         with:
           nuitka-version: main
-          script-name: app.py
+          script-name: main.py
           mode: standalone
           enable-plugins: pyside6
           windows-console-mode: disable
           windows-icon-from-ico: assets/icon.ico
-          include-package: UnityPy.resources
+          include-package: |
+            UnityPy.resources
+            utilities
           include-package-data: |
             UnityPy
             archspec
           include-data-dir: assets=assets
-          include-data-files: styles.qss=styles.qss
+          include-data-files: |
+            styles.qss=styles.qss
+            LICENSE=LICENSE
+            pyproject.toml=pyproject.toml
+            VERSION=VERSION
           output-dir: dist_main
           output-file: ABVME.exe
 
-      - name: Prepare Assets for Upload 📦
-        shell: powershell
-        id: win_prepare_assets
+      - name: Normalize standalone dist folder
+        shell: pwsh
         run: |
-          $distPath = "dist_main\*.dist\*"
-          # Release (from workflow_call or tag push)
-          if ("${{ env.IS_RELEASE }}" -eq 'true') {
-            Compress-Archive -Path $distPath -DestinationPath "ABVME-Windows-x64.zip"
-            echo "WINDOWS_ARTIFACT_PATH=ABVME-Windows-x64.zip" >> $env:GITHUB_OUTPUT
-          } 
-          # Manual (workflow_dispatch)
-          else {
-            $artifactName = "ABVME-Windows-x64"
-            $distDir = Get-ChildItem -Path "dist_main" -Filter "*.dist" | Select-Object -First 1
-            Rename-Item -Path $distDir.FullName -NewName $artifactName
-            $artifactPath = "dist_main\$artifactName"
-            echo "WINDOWS_ARTIFACT_NAME=$artifactName" >> $env:GITHUB_OUTPUT
-            echo "WINDOWS_ARTIFACT_PATH=$artifactPath" >> $env:GITHUB_OUTPUT
+          $distDir = Get-ChildItem -Path "dist_main" -Filter "*.dist" -Directory | Select-Object -First 1
+          if (-not $distDir) { throw "No *.dist folder under dist_main" }
+          if (Test-Path "$($distDir.FullName)\main.exe") {
+            Rename-Item -Path "$($distDir.FullName)\main.exe" -NewName "ABVME.exe" -Force
           }
+          if (-not (Test-Path "$($distDir.FullName)\ABVME.exe")) {
+            Get-ChildItem -Recurse $distDir.FullName | Select-Object FullName
+            throw "ABVME.exe missing after standalone build"
+          }
+          $target = "dist_main\ABVME.dist"
+          if ($distDir.FullName -ne (Resolve-Path $target -ErrorAction SilentlyContinue)) {
+            if (Test-Path $target) { Remove-Item $target -Recurse -Force }
+            Rename-Item -Path $distDir.FullName -NewName "ABVME.dist" -Force
+          }
+          Write-Host "OK: dist_main\ABVME.dist\ABVME.exe"
+
+      - name: Check signing secrets
+        id: check_secrets
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.CERT_BASE64 }}" ] && [ -n "${{ secrets.CERT_PASSWORD }}" ]; then
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Sign Standalone Executable
+        if: steps.check_secrets.outputs.available == 'true'
+        shell: pwsh
+        env:
+          CERT_DATA: ${{ secrets.CERT_BASE64 }}
+          CERT_PASS: ${{ secrets.CERT_PASSWORD }}
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          $exePath = "dist_main\ABVME.dist\ABVME.exe"
+
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\" -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match "x64" } |
+            Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+
+          try {
+            $cleanBase64 = $env:CERT_DATA -replace '\s',''
+            $certBytes = [System.Convert]::FromBase64String($cleanBase64)
+            [System.IO.File]::WriteAllBytes($certPath, $certBytes)
+
+            Write-Host "Verifying PFX and Password..."
+            certutil -p $env:CERT_PASS -dump $certPath | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Incorrect password or corrupted PFX file." }
+
+            Write-Host "Signing standalone executable..."
+            & $signtool sign /f $certPath /p "$env:CERT_PASS" /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v $exePath
+            if ($LASTEXITCODE -ne 0) { throw "SignTool failed with code: $LASTEXITCODE" }
+          }
+          catch {
+            Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+            exit 1
+          }
+          finally {
+            if (Test-Path $certPath) { Remove-Item $certPath -Force }
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $version = "${{ steps.build_version.outputs.version }}"
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          & $iscc "/DMyAppVersion=$version" packaging\windows\ABVME.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with code: $LASTEXITCODE" }
+          if (-not (Test-Path "installer\ABVME-Windows-x64-Setup.exe")) {
+            throw "Installer not produced at installer\ABVME-Windows-x64-Setup.exe"
+          }
+
+      - name: Sign Installer
+        if: steps.check_secrets.outputs.available == 'true'
+        shell: pwsh
+        env:
+          CERT_DATA: ${{ secrets.CERT_BASE64 }}
+          CERT_PASS: ${{ secrets.CERT_PASSWORD }}
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          $exePath = "installer\ABVME-Windows-x64-Setup.exe"
+
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\" -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match "x64" } |
+            Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+
+          try {
+            $cleanBase64 = $env:CERT_DATA -replace '\s',''
+            $certBytes = [System.Convert]::FromBase64String($cleanBase64)
+            [System.IO.File]::WriteAllBytes($certPath, $certBytes)
+
+            Write-Host "Signing installer..."
+            & $signtool sign /f $certPath /p "$env:CERT_PASS" /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v $exePath
+            if ($LASTEXITCODE -ne 0) { throw "SignTool failed with code: $LASTEXITCODE" }
+          }
+          catch {
+            Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+            exit 1
+          }
+          finally {
+            if (Test-Path $certPath) { Remove-Item $certPath -Force }
+          }
+
+      - name: Create portable zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist_main\ABVME.dist\*" -DestinationPath "ABVME-Windows-x64-Portable.zip" -Force
+          if (-not (Test-Path "ABVME-Windows-x64-Portable.zip")) { throw "Portable zip not produced" }
 
       - name: Upload Artifact (Testing) 💾
         uses: actions/upload-artifact@v4
-        if: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_NAME != '' }}
+        if: ${{ env.IS_RELEASE != 'true' }}
         with:
-          name: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_NAME }}
-          path: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_PATH }}
+          name: ABVME-Windows-x64
+          path: |
+            installer/ABVME-Windows-x64-Setup.exe
+            ABVME-Windows-x64-Portable.zip
 
       - name: Upload Release Asset (Windows) 📤
         if: ${{ env.IS_RELEASE == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
-          files: ABVME-Windows-x64.zip
+          files: |
+            installer/ABVME-Windows-x64-Setup.exe
+            ABVME-Windows-x64-Portable.zip
           generate_release_notes: true
           token: ${{ secrets.GITHUB_TOKEN }}
-
   # ==================================================================================
   # 2. LINUX BUILD (x64)
   # ==================================================================================
@@ -138,15 +260,20 @@ jobs:
         uses: Nuitka/Nuitka-Action@main
         with:
           nuitka-version: main
-          script-name: app.py
+          script-name: main.py
           mode: standalone
           enable-plugins: pyside6
-          include-package: UnityPy.resources
+          include-package: |
+            UnityPy.resources
+            utilities
           include-package-data: |
             UnityPy
             archspec
           include-data-dir: assets=assets
-          include-data-files: styles.qss=styles.qss
+          include-data-files: |
+            styles.qss=styles.qss
+            LICENSE=LICENSE
+            pyproject.toml=pyproject.toml
           output-dir: dist_main
           output-file: ABVME
 

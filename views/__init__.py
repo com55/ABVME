@@ -1,9 +1,7 @@
 """Views package - UI components"""
 
-from .asset_table_widget import AssetTableWidget
-from .preview_panel_widget import PreviewPanelWidget
-from .main_window import ABVMEMainWindow
-from .save_dialog import SaveDialog
+from importlib import import_module
+from typing import Any
 
 __all__ = [
     "AssetTableWidget",
@@ -12,3 +10,18 @@ __all__ = [
     "SaveDialog",
 ]
 
+_EXPORTS = {
+    "AssetTableWidget": ".asset_table_widget",
+    "PreviewPanelWidget": ".preview_panel_widget",
+    "ABVMEMainWindow": ".main_window",
+    "SaveDialog": ".save_dialog",
+}
+
+
+def __getattr__(name: str) -> Any:
+    module_name = _EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(module_name, __name__), name)
+    globals()[name] = value
+    return value
