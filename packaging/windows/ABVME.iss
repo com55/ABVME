@@ -2,6 +2,7 @@
 ; Compile from repo root:
 ;   ISCC.exe /DMyAppVersion=0.1.9 packaging\windows\ABVME.iss
 ; Packages Nuitka standalone output at dist_main\ABVME.dist
+; Paths below are relative to the repo root via SourceDir.
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
@@ -23,6 +24,8 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}/releases
+; Script lives under packaging\windows\; resolve assets/dist from repo root.
+SourceDir=..\..
 PrivilegesRequired=lowest
 DefaultDirName={localappdata}\{#MyAppName}
 DefaultGroupName={#MyAppName}

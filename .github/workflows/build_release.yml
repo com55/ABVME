@@ -102,6 +102,51 @@ jobs:
           }
           Write-Host "OK: dist_main\ABVME.dist\ABVME.exe"
 
+      - name: Check signing secrets
+        id: check_secrets
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.CERT_BASE64 }}" ] && [ -n "${{ secrets.CERT_PASSWORD }}" ]; then
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Sign Standalone Executable
+        if: steps.check_secrets.outputs.available == 'true'
+        shell: pwsh
+        env:
+          CERT_DATA: ${{ secrets.CERT_BASE64 }}
+          CERT_PASS: ${{ secrets.CERT_PASSWORD }}
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          $exePath = "dist_main\ABVME.dist\ABVME.exe"
+
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\" -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match "x64" } |
+            Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+
+          try {
+            $cleanBase64 = $env:CERT_DATA -replace '\s',''
+            $certBytes = [System.Convert]::FromBase64String($cleanBase64)
+            [System.IO.File]::WriteAllBytes($certPath, $certBytes)
+
+            Write-Host "Verifying PFX and Password..."
+            certutil -p $env:CERT_PASS -dump $certPath | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Incorrect password or corrupted PFX file." }
+
+            Write-Host "Signing standalone executable..."
+            & $signtool sign /f $certPath /p "$env:CERT_PASS" /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v $exePath
+            if ($LASTEXITCODE -ne 0) { throw "SignTool failed with code: $LASTEXITCODE" }
+          }
+          catch {
+            Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+            exit 1
+          }
+          finally {
+            if (Test-Path $certPath) { Remove-Item $certPath -Force }
+          }
+
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --no-progress -y
@@ -116,6 +161,37 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed with code: $LASTEXITCODE" }
           if (-not (Test-Path "installer\ABVME-Windows-x64-Setup.exe")) {
             throw "Installer not produced at installer\ABVME-Windows-x64-Setup.exe"
+          }
+
+      - name: Sign Installer
+        if: steps.check_secrets.outputs.available == 'true'
+        shell: pwsh
+        env:
+          CERT_DATA: ${{ secrets.CERT_BASE64 }}
+          CERT_PASS: ${{ secrets.CERT_PASSWORD }}
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP "cert.pfx"
+          $exePath = "installer\ABVME-Windows-x64-Setup.exe"
+
+          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\" -Filter signtool.exe -Recurse |
+            Where-Object { $_.FullName -match "x64" } |
+            Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+
+          try {
+            $cleanBase64 = $env:CERT_DATA -replace '\s',''
+            $certBytes = [System.Convert]::FromBase64String($cleanBase64)
+            [System.IO.File]::WriteAllBytes($certPath, $certBytes)
+
+            Write-Host "Signing installer..."
+            & $signtool sign /f $certPath /p "$env:CERT_PASS" /tr http://timestamp.digicert.com /td sha256 /fd sha256 /v $exePath
+            if ($LASTEXITCODE -ne 0) { throw "SignTool failed with code: $LASTEXITCODE" }
+          }
+          catch {
+            Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+            exit 1
+          }
+          finally {
+            if (Test-Path $certPath) { Remove-Item $certPath -Force }
           }
 
       - name: Create portable zip
