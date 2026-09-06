@@ -16,6 +16,7 @@ from utilities.app_info import (
     AUTHOR_GITHUB_URL,
     AUTHOR_NAME,
     RELEASES_URL,
+    REPO_URL,
     app_version,
     window_title,
 )
@@ -48,6 +49,7 @@ class AppInfoTests(unittest.TestCase):
     def test_releases_url_matches_readme_latest(self) -> None:
         self.assertEqual(RELEASES_URL, "https://github.com/com55/ABVME/releases/latest")
         self.assertEqual(AUTHOR_GITHUB_URL, "https://github.com/com55")
+        self.assertEqual(REPO_URL, "https://github.com/com55/ABVME")
 
 
 class AboutMenuTests(unittest.TestCase):
@@ -113,10 +115,12 @@ class AboutDialogTests(unittest.TestCase):
         self.assertEqual(self.dialog.version_value.text(), app_version())
         self.assertEqual(self.dialog.author_name_label.text(), AUTHOR_NAME)
         self.assertIn("Check for Updates", self.dialog.updates_link.text())
-        self.assertIn(RELEASES_URL, self.dialog.updates_link.text())
+        self.assertFalse(self.dialog.updates_link.openExternalLinks())
+        self.assertIn("Repository", self.dialog.repo_link.text())
+        self.assertIn(REPO_URL, self.dialog.repo_link.text())
+        self.assertTrue(self.dialog.repo_link.openExternalLinks())
         self.assertIn(AUTHOR_GITHUB_URL, self.dialog.author_link.text())
         self.assertIn("Unity Technologies", self.dialog.disclaimer_label.text())
-        self.assertTrue(self.dialog.updates_link.openExternalLinks())
 
     def test_info_tables_are_three_columns_with_links_on_the_right(self) -> None:
         version_grid = self.dialog.info_grid
@@ -132,6 +136,11 @@ class AboutDialogTests(unittest.TestCase):
         self.assertTrue(
             bool(self.dialog.updates_link.alignment() & Qt.AlignmentFlag.AlignRight)
         )
+
+        _row, column, _rs, _cs = version_grid.getItemPosition(
+            version_grid.indexOf(self.dialog.repo_link)
+        )
+        self.assertEqual(column, 2)
 
         _row, column, _rs, _cs = authors_grid.getItemPosition(
             authors_grid.indexOf(self.dialog.author_link)

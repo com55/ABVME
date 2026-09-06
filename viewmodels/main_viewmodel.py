@@ -4,6 +4,7 @@ Presentation logic and state management for the main window
 """
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -19,11 +20,14 @@ from models.save_options import (
 )
 from models.texture_replace_options import TextureReplaceOptions
 from services import LoaderWorker, EditWorker, SaveWorker
+from utilities.updater import UpdateInfo, update_info_from_json, update_info_to_json
 
 
 log = logging.getLogger("ABVME")
 
 _LAST_OPEN_DIRECTORY_KEY = "last_open_directory"
+_LAST_UPDATE_CHECK_KEY = "last_update_check"
+_PENDING_UPDATE_KEY = "pending_update_json"
 _BUNDLE_SUFFIXES = {".bundle", ".unity3d"}
 
 
@@ -168,6 +172,36 @@ class MainViewModel(QObject):
         self._settings.setValue(
             "always_show_texture_options", self.always_show_texture_options
         )
+
+    def get_last_update_check(self) -> datetime | None:
+        raw = self._settings.value(_LAST_UPDATE_CHECK_KEY, "", type=str)
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
+    def set_last_update_check(self, when: datetime) -> None:
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        self._settings.setValue(_LAST_UPDATE_CHECK_KEY, when.isoformat())
+        self._settings.sync()
+
+    def get_pending_update(self) -> UpdateInfo | None:
+        raw = self._settings.value(_PENDING_UPDATE_KEY, "", type=str)
+        return update_info_from_json(raw or "")
+
+    def set_pending_update(self, info: UpdateInfo) -> None:
+        self._settings.setValue(_PENDING_UPDATE_KEY, update_info_to_json(info))
+        self._settings.sync()
+
+    def clear_pending_update(self) -> None:
+        self._settings.remove(_PENDING_UPDATE_KEY)
+        self._settings.sync()
 
     def set_packer(self, packer: str) -> None:
         self.persist_save_options(packer, self.resource_patch_mode, self.crc_mode)

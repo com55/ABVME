@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QDialog,
     QDialogButtonBox,
+    QLabel,
 )
 
 from viewmodels import MainViewModel
@@ -54,7 +55,14 @@ from models.texture_replace_options import TextureReplaceOptions
 from views.overwrite_confirm import confirm_overwrite_existing
 from views.about_dialog import AboutDialog
 from views.texture_replace_dialog import TextureReplaceDialog, pixmap_from_path
-from utilities.app_info import window_title
+from utilities.app_info import app_version, window_title
+from utilities.updater import (
+    UpdateInfo,
+    fetch_latest_release,
+    format_update_status_message,
+    is_newer,
+    should_check_for_updates,
+)
 
 
 log = logging.getLogger("ABVME")
@@ -94,10 +102,12 @@ class ABVMEMainWindow(QMainWindow):
 
     # Class-level Signal definition
     log_signal = Signal(str, int)
+    update_check_finished = Signal(object)  # ReleaseInfo | None on failure use None
 
     def __init__(self, settings=None):
         super().__init__()
         self.setWindowTitle(window_title())
+        self._pending_update: UpdateInfo | None = None
         self.setWindowIcon(QIcon(get_resource_str("assets/icon.ico")))
         self.setMinimumSize(1000, 600)
         self.resize(1200, 700)
@@ -114,13 +124,30 @@ class ABVMEMainWindow(QMainWindow):
         self._setup_menubar()
         self._connect_viewmodel()
         self._setup_logging()
+        self.update_check_finished.connect(self._on_update_check_finished)
+        self._restore_pending_update()
+        QTimer.singleShot(1500, self._maybe_start_update_check)
 
     def _setup_status_bar(self):
         """Setup status bar with progress indicator"""
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Ready")
         self.status_bar.setStyleSheet("background-color: '#3c3c3c';")
+
+        # Permanent left label for idle text (Ready / update banner). Temporary
+        # showMessage() overlays this; clearMessage() reveals it again — so Ready
+        # never "vanishes" into a blank bar after a log timeout.
+        self.idle_status_label = QLabel("Ready")
+        self.idle_status_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.idle_status_label.setOpenExternalLinks(False)
+        self.idle_status_label.linkActivated.connect(
+            lambda _href: self._on_about_clicked()
+        )
+        self.idle_status_label.setStyleSheet(
+            "background-color: transparent; color: #cccccc;"
+        )
+        self.status_bar.addWidget(self.idle_status_label)
+        self._update_banner_active = False
 
         self.progress_bar = QProgressBar()
         self.status_bar.setSizeGripEnabled(False)
@@ -133,7 +160,7 @@ class ABVMEMainWindow(QMainWindow):
 
         self._active_background_tasks = 0
 
-        # Status timer for auto-clear
+        # Status timer for auto-clear of temporary showMessage text
         self.status_timer = QTimer(self)
         self.status_timer.setSingleShot(True)
         self.status_timer.timeout.connect(self._clear_status_bar)
@@ -284,8 +311,94 @@ class ABVMEMainWindow(QMainWindow):
         menu_bar.addAction(self.about_action)
 
     def _on_about_clicked(self) -> None:
-        dialog = AboutDialog(self)
+        dialog = AboutDialog(
+            self,
+            pending_update=self._pending_update,
+            on_update_found=self._on_update_found,
+            on_update_cleared=self._on_update_cleared,
+        )
         dialog.exec()
+
+    def _restore_pending_update(self) -> None:
+        info = self.viewmodel.get_pending_update()
+        if info is None:
+            return
+        if not is_newer(info.latest_version, app_version()):
+            self.viewmodel.clear_pending_update()
+            return
+        self._apply_pending_update(info, persist=False)
+
+    def _on_update_found(self, update: UpdateInfo) -> None:
+        self._apply_pending_update(update, persist=True)
+
+    def _on_update_cleared(self) -> None:
+        self._pending_update = None
+        self.viewmodel.clear_pending_update()
+        self._set_idle_status_ready()
+
+    def _apply_pending_update(self, update: UpdateInfo, *, persist: bool) -> None:
+        self._pending_update = update
+        if persist:
+            self.viewmodel.set_pending_update(update)
+        self._show_update_status(update.release_name)
+
+    def _show_update_status(self, release_name: str) -> None:
+        self.status_timer.stop()
+        self.status_bar.clearMessage()
+        self._update_banner_active = True
+        self.idle_status_label.setTextFormat(Qt.TextFormat.RichText)
+        self.idle_status_label.setText(format_update_status_message(release_name))
+
+    def _set_idle_status_ready(self) -> None:
+        self.status_timer.stop()
+        self.status_bar.clearMessage()
+        self._update_banner_active = False
+        self.idle_status_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.idle_status_label.setText("Ready")
+
+    def _restore_idle_status(self) -> None:
+        """Clear temporary showMessage so the permanent idle label shows again."""
+        self.status_bar.clearMessage()
+
+    def _maybe_start_update_check(self) -> None:
+        from datetime import datetime, timezone
+
+        last = self.viewmodel.get_last_update_check()
+        now = datetime.now(timezone.utc)
+        if not should_check_for_updates(last, now=now):
+            return
+
+        def worker() -> None:
+            try:
+                latest = fetch_latest_release()
+            except Exception as exc:
+                log.debug("Startup update check failed: %s", exc)
+                self.update_check_finished.emit(None)
+                return
+            self.update_check_finished.emit(latest)
+
+        threading.Thread(target=worker, daemon=True, name="abvme-update-check").start()
+
+    def _on_update_check_finished(self, latest: object) -> None:
+        from datetime import datetime, timezone
+
+        if latest is None:
+            return
+        self.viewmodel.set_last_update_check(datetime.now(timezone.utc))
+        current = app_version()
+        if not is_newer(latest.latest_version, current):  # type: ignore[attr-defined]
+            self._on_update_cleared()
+            return
+        info = UpdateInfo(
+            current_version=current.lstrip("v"),
+            latest_version=latest.latest_version,  # type: ignore[attr-defined]
+            release_name=latest.release_name,  # type: ignore[attr-defined]
+            release_url=latest.release_url,  # type: ignore[attr-defined]
+            tag_name=latest.tag_name,  # type: ignore[attr-defined]
+            body=latest.body,  # type: ignore[attr-defined]
+            assets=list(latest.assets),  # type: ignore[attr-defined]
+        )
+        self._on_update_found(info)
 
     def _on_packer_option(self, action: QAction) -> None:
         self.viewmodel.set_packer(str(action.data()))
@@ -1112,13 +1225,15 @@ class ABVMEMainWindow(QMainWindow):
             self.progress_bar.setVisible(False)
             if message:
                 self.status_bar.showMessage(message)
+            else:
+                self._restore_idle_status()
         elif message:
             self.status_bar.showMessage(message)
 
     def _clear_status_bar(self):
-        """Clear status bar"""
+        """Clear temporary status; permanent idle label (Ready / update) remains."""
         if self._active_background_tasks == 0:
-            self.status_bar.clearMessage()
+            self._restore_idle_status()
         else:
             self.status_timer.start(10000)
 

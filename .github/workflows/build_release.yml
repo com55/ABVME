@@ -44,6 +44,22 @@ jobs:
       - name: Install Dependencies
         run: uv export --no-hashes -o requirements.txt && pip install -r requirements.txt
 
+      - name: Get version for build
+        id: build_version
+        shell: powershell
+        run: |
+          if ("${{ inputs.tag_name }}" -ne "") {
+            $version = "${{ inputs.tag_name }}".TrimStart("v")
+          } elseif ("${{ github.ref }}" -match "refs/tags/v(.+)") {
+            $version = $matches[1]
+          } else {
+            $version = (Select-String -Path pyproject.toml -Pattern '^version = "(.+)"').Matches.Groups[1].Value
+          }
+          if (-not $version) { $version = "0.0.0" }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          $version | Out-File -FilePath VERSION -Encoding utf8 -NoNewline
+          echo "Building version: $version"
+
       # Build Main App (Windows)
       - name: Build Main App (ABVME) 🏗️
         uses: Nuitka/Nuitka-Action@main
@@ -63,45 +79,70 @@ jobs:
             styles.qss=styles.qss
             LICENSE=LICENSE
             pyproject.toml=pyproject.toml
+            VERSION=VERSION
           output-dir: dist_main
           output-file: ABVME.exe
 
-      - name: Prepare Assets for Upload 📦
-        shell: powershell
-        id: win_prepare_assets
+      - name: Normalize standalone dist folder
+        shell: pwsh
         run: |
-          $distPath = "dist_main\*.dist\*"
-          # Release (from workflow_call or tag push)
-          if ("${{ env.IS_RELEASE }}" -eq 'true') {
-            Compress-Archive -Path $distPath -DestinationPath "ABVME-Windows-x64.zip"
-            echo "WINDOWS_ARTIFACT_PATH=ABVME-Windows-x64.zip" >> $env:GITHUB_OUTPUT
-          } 
-          # Manual (workflow_dispatch)
-          else {
-            $artifactName = "ABVME-Windows-x64"
-            $distDir = Get-ChildItem -Path "dist_main" -Filter "*.dist" | Select-Object -First 1
-            Rename-Item -Path $distDir.FullName -NewName $artifactName
-            $artifactPath = "dist_main\$artifactName"
-            echo "WINDOWS_ARTIFACT_NAME=$artifactName" >> $env:GITHUB_OUTPUT
-            echo "WINDOWS_ARTIFACT_PATH=$artifactPath" >> $env:GITHUB_OUTPUT
+          $distDir = Get-ChildItem -Path "dist_main" -Filter "*.dist" -Directory | Select-Object -First 1
+          if (-not $distDir) { throw "No *.dist folder under dist_main" }
+          if (Test-Path "$($distDir.FullName)\main.exe") {
+            Rename-Item -Path "$($distDir.FullName)\main.exe" -NewName "ABVME.exe" -Force
           }
+          if (-not (Test-Path "$($distDir.FullName)\ABVME.exe")) {
+            Get-ChildItem -Recurse $distDir.FullName | Select-Object FullName
+            throw "ABVME.exe missing after standalone build"
+          }
+          $target = "dist_main\ABVME.dist"
+          if ($distDir.FullName -ne (Resolve-Path $target -ErrorAction SilentlyContinue)) {
+            if (Test-Path $target) { Remove-Item $target -Recurse -Force }
+            Rename-Item -Path $distDir.FullName -NewName "ABVME.dist" -Force
+          }
+          Write-Host "OK: dist_main\ABVME.dist\ABVME.exe"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $version = "${{ steps.build_version.outputs.version }}"
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          & $iscc "/DMyAppVersion=$version" packaging\windows\ABVME.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with code: $LASTEXITCODE" }
+          if (-not (Test-Path "installer\ABVME-Windows-x64-Setup.exe")) {
+            throw "Installer not produced at installer\ABVME-Windows-x64-Setup.exe"
+          }
+
+      - name: Create portable zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist_main\ABVME.dist\*" -DestinationPath "ABVME-Windows-x64-Portable.zip" -Force
+          if (-not (Test-Path "ABVME-Windows-x64-Portable.zip")) { throw "Portable zip not produced" }
 
       - name: Upload Artifact (Testing) 💾
         uses: actions/upload-artifact@v4
-        if: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_NAME != '' }}
+        if: ${{ env.IS_RELEASE != 'true' }}
         with:
-          name: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_NAME }}
-          path: ${{ steps.win_prepare_assets.outputs.WINDOWS_ARTIFACT_PATH }}
+          name: ABVME-Windows-x64
+          path: |
+            installer/ABVME-Windows-x64-Setup.exe
+            ABVME-Windows-x64-Portable.zip
 
       - name: Upload Release Asset (Windows) 📤
         if: ${{ env.IS_RELEASE == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG_NAME }}
-          files: ABVME-Windows-x64.zip
+          files: |
+            installer/ABVME-Windows-x64-Setup.exe
+            ABVME-Windows-x64-Portable.zip
           generate_release_notes: true
           token: ${{ secrets.GITHUB_TOKEN }}
-
   # ==================================================================================
   # 2. LINUX BUILD (x64)
   # ==================================================================================
