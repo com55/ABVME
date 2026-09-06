@@ -13,7 +13,7 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
 
 ## Usage
 - Pre-built Windows builds from [Releases](https://github.com/com55/ABVME/releases/latest):
-  - **Setup** (`ABVME-Windows-x64-Setup.exe`) — per-user install under Local AppData; can update from **About**
+  - **Setup** (`ABVME-Windows-x64-Setup.exe`) — per-user install under Local AppData; Start Menu; optional `.bundle` / `.unity3d` file association; can update from **About**
   - **Portable** (`ABVME-Windows-x64-Portable.zip`) — unzip and run; updates via the Releases page
 - Linux: portable zip from Releases
 - Or clone and run from source:
@@ -33,17 +33,22 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
     ```
 
 ## Features
-- **Asset Preview** - View asset contents directly in the app
+- **Asset Preview** - View asset contents directly in the app (lazy Dump tab; copy image from preview)
 - **Asset Export** - Export single or multiple selected assets
-- **Asset Modification** - Replace asset data with external files
+- **Asset Replacement** - Confirm before every replace (button / menu / drag-drop)
+  - **Texture2D** — optional Texture Replace Options (format, mipmaps, filter/wrap, and more); short confirm with **Options…**, or always show the full dialog
+  - **TextAsset** — accepts any non-bundle file; if the suffix is not in that object's container, a confirm dialog appears
 - **Bundle Saving** - Save modified AssetBundles back to disk (all / selected / per-bundle)
-- **Save / Options** - Compression (including LZ4HC), resource patch method (Inline / Orphan cleanup / Rebuild .resS), and CRC correction (Off / On / Auto for Windows)
-- **Column Filtering** - Filter the asset table by Type and Source File
+- **Save / Options** - Compression (including LZ4HC), resource patch method (Inline / Orphan cleanup / Rebuild .resS), and CRC correction (Off / On / Auto for Windows); Save dialog can collapse options and list only changed files
+- **Table** - Size column; empty name/container/source shown as dim `(none)`; replaced rows highlighted green; filter by Type and Source File
+- **Menus** - File / Asset / Options / About; **Display all assets**; in-app **Check for Updates** from About
+- **Open Folder** - Load top-level `.bundle` / `.unity3d` from a folder (`Ctrl+Shift+O`); confirms before loading 100+ files
 - **Drag & Drop**
   - Drop files anywhere on the window (table, preview, and empty space all count)
   - AssetBundles (`.bundle`, `.unity3d`, or UnityFS) open; an overlay shows Open vs Replace while dragging
-  - Other files replace the selected asset. Texture2D accepts common image types. TextAsset accepts any non-bundle file; if the suffix is not in that object's container, a confirm dialog appears
+  - Other files replace the selected asset
 - **Open from Explorer** - Selecting multiple bundle files and opening them loads everything into one window (launches within ~500ms are merged)
+- **Shortcuts** - `Ctrl+O`, `Ctrl+Shift+O`, `Ctrl+Shift+S`, `Ctrl+R`, `Ctrl+E`, `Ctrl+Q`
 - **Supported asset types**
   - **TextAsset** — view, export, replace
   - **Texture2D** — view, export, replace
@@ -68,4 +73,3 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
 
 ## License
 MIT
-
