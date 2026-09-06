@@ -15,7 +15,7 @@ Easy to use like [AssetStudio](https://github.com/Perfare/AssetStudio), but focu
 - Pre-built Windows builds from [Releases](https://github.com/com55/ABVME/releases/latest):
   - **Setup** (`ABVME-Windows-x64-Setup.exe`) — per-user install under Local AppData; Start Menu; optional `.bundle` / `.unity3d` file association; can update from **About**
   - **Portable** (`ABVME-Windows-x64-Portable.zip`) — unzip and run; updates via the Releases page
-- Linux: portable zip from Releases
+- Linux: portable zip from [Releases](https://github.com/com55/ABVME/releases/latest)
 - Or clone and run from source:
   ```bash
   git clone https://github.com/com55/ABVME.git
