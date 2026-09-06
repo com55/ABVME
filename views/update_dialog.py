@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import sys
+import threading
 
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -83,6 +86,27 @@ class UpdateDialog(QDialog):
         )
         self.progress_bar = QProgressBar()
         self.progress_bar.setTextVisible(True)
+        self.progress_bar.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.progress_bar.setMinimumWidth(120)
+        self.progress_bar.setMinimumHeight(22)
+        # Global QWidget background matches the dialog, which hides the empty
+        # track — only the filled chunk would look like a tiny square.
+        self.progress_bar.setStyleSheet(
+            "QProgressBar {"
+            "  background-color: #2d2d30;"
+            "  border: 1px solid #555555;"
+            "  border-radius: 4px;"
+            "  text-align: center;"
+            "  color: #cccccc;"
+            "}"
+            "QProgressBar::chunk {"
+            "  background-color: #007acc;"
+            "  border-radius: 3px;"
+            "}"
+        )
         self.progress_bar.setVisible(False)
         self.close_button = QPushButton("Close")
         self.close_button.setDefault(True)
@@ -121,24 +145,29 @@ class UpdateDialog(QDialog):
                 if total and total > 0:
                     self.progress_bar.setRange(0, total)
                     self.progress_bar.setValue(done)
-                self.progress_bar.setFormat(f"Downloading… {done} bytes")
+                    # Keep label short so it fits on the stretched bar.
+                    self.progress_bar.setFormat("Downloading… %p%")
+                else:
+                    self.progress_bar.setFormat(f"Downloading… {done:,} bytes")
 
             download_file(asset.browser_download_url, dest, progress_cb=_progress)
             target = install_dir() / "ABVME.exe"
             if not target.exists():
                 target = get_running_executable_path()
-            self.progress_bar.setFormat("Installer started. The app will close.")
+            self.progress_bar.setFormat("Installer started. Closing…")
+            QApplication.processEvents()
             launch_setup_and_prepare_relaunch(
                 dest,
                 target,
                 list(sys.argv[1:]),
             )
-            parent = self.parentWidget()
-            self.accept()
-            if parent is not None:
-                parent.window().close()
-            else:
-                self.close()
+            # Hide immediately so Setup is not stacked on a live ABVME window,
+            # then hard-exit so Inno can replace files without waiting on us.
+            # Relaunch is handled by the detached PowerShell watcher.
+            for widget in QApplication.topLevelWidgets():
+                widget.hide()
+            QApplication.processEvents()
+            threading.Timer(0.25, lambda: os._exit(0)).start()
         except Exception as exc:
             self._set_progress_visible(False)
             self.update_now_button.setEnabled(True)

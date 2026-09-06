@@ -3,7 +3,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QSizePolicy
 
 from utilities.updater import ReleaseAsset, UpdateInfo
 from views.update_dialog import UpdateDialog
@@ -50,6 +50,11 @@ class UpdateDialogTests(unittest.TestCase):
         self.assertFalse(dialog.progress_bar.isVisible())
         self.assertTrue(dialog._buttons_spacer.isVisibleTo(dialog))
         self.assertTrue(dialog.progress_bar.isTextVisible())
+        self.assertEqual(
+            dialog.progress_bar.sizePolicy().horizontalPolicy(),
+            QSizePolicy.Policy.Expanding,
+        )
+        self.assertIn("QProgressBar::chunk", dialog.progress_bar.styleSheet())
         self.assertTrue(dialog.body_view.openExternalLinks())
 
         dialog._set_progress_visible(True)
