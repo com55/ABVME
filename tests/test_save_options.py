@@ -296,7 +296,14 @@ class OptionsMenuSaveSettingsTests(unittest.TestCase):
                 labels.append("---")
             else:
                 labels.append(_plain(item.text()))
-        self.assertEqual(labels, ["Display all assets", "---", "Save Options"])
+        self.assertEqual(
+            labels,
+            [
+                "Display all assets",
+                "---",
+                "Save Options",
+            ],
+        )
         save_options = _item(_options_menu(self.window), "Save Options")
         self.assertFalse(save_options.isCheckable())
         self.assertFalse(save_options.icon().isNull())

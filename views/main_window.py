@@ -32,6 +32,8 @@ from PySide6.QtWidgets import (
     QSplitter,
     QFileDialog,
     QMessageBox,
+    QDialog,
+    QDialogButtonBox,
 )
 
 from viewmodels import MainViewModel
@@ -48,8 +50,10 @@ from utilities.drop_classifier import (
 from services import StatusBarHandler
 from models import AssetInfo, EditResult
 from models.save_options import CRC_LABELS, PACKER_LABELS, RESOURCE_LABELS
+from models.texture_replace_options import TextureReplaceOptions
 from views.overwrite_confirm import confirm_overwrite_existing
 from views.about_dialog import AboutDialog
+from views.texture_replace_dialog import TextureReplaceDialog, pixmap_from_path
 from utilities.app_info import window_title
 
 
@@ -682,18 +686,42 @@ class ABVMEMainWindow(QMainWindow):
         )
 
         if file_path:
-            if asset.obj_type.name == "TextAsset" and not suffix_in_container(
-                file_path, asset.container
-            ):
-                if not self._confirm_unmatched_textasset_replace(asset, file_path):
-                    return
-            elif not self._confirm_replace(asset, file_path):
-                return
-            self.viewmodel.edit_asset(asset, file_path)
+            self._start_replace(asset, file_path)
 
-    def _ask_yes_no(self, title: str, text: str) -> bool:
+    def _start_replace(self, asset: AssetInfo, file_path: str) -> bool:
+        if asset.obj_type.name == "Texture2D":
+            options = self._confirm_texture_replace(asset, file_path)
+            if options is None:
+                return False
+            return self.viewmodel.edit_asset(asset, file_path, texture_options=options)
+        if asset.obj_type.name == "TextAsset" and not suffix_in_container(
+            file_path, asset.container
+        ):
+            if not self._confirm_unmatched_textasset_replace(asset, file_path):
+                return False
+        elif not self._confirm_replace(asset, file_path):
+            return False
+        return self.viewmodel.edit_asset(asset, file_path)
+
+    def _front_dialog(self, box: QDialog) -> None:
         self.raise_()
         self.activateWindow()
+        box.setWindowModality(Qt.WindowModality.ApplicationModal)
+        # Briefly stay on top so Explorer-drop focus does not leave the dialog
+        # behind, then clear the hint so it is not stuck above other apps.
+        box.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        box.show()
+        box.raise_()
+        box.activateWindow()
+        handle = box.windowHandle()
+        if handle is not None:
+            handle.requestActivate()
+        box.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+        box.show()
+        box.raise_()
+        box.activateWindow()
+
+    def _ask_yes_no(self, title: str, text: str) -> bool:
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle(title)
@@ -702,17 +730,109 @@ class ABVMEMainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         box.setDefaultButton(QMessageBox.StandardButton.Yes)
-        box.setWindowModality(Qt.WindowModality.ApplicationModal)
-        box.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-        # activateWindow() has no effect until the dialog is visible; after an
-        # Explorer drop Windows also will not steal focus, so stay-on-top.
-        box.show()
-        box.raise_()
-        box.activateWindow()
-        handle = box.windowHandle()
-        if handle is not None:
-            handle.requestActivate()
+        self._front_dialog(box)
         return box.exec() == QMessageBox.StandardButton.Yes
+
+    def _ask_replace_with_options(self, title: str, text: str) -> str:
+        # Same QMessageBox shell as TextAsset confirm; Options… pinned left.
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(title)
+        box.setText(text)
+        yes_btn = box.addButton(QMessageBox.StandardButton.Yes)
+        no_btn = box.addButton(QMessageBox.StandardButton.No)
+        options_btn = box.addButton("Options...", QMessageBox.ButtonRole.ActionRole)
+        options_btn.setAutoDefault(False)
+        options_btn.setDefault(False)
+        options_btn.setFlat(True)
+        options_btn.setStyleSheet(
+            "QPushButton { color: #9d9d9d; border: none; background: transparent; "
+            "padding: 6px 12px; }"
+            "QPushButton:hover { color: #cccccc; }"
+        )
+        box.setDefaultButton(yes_btn)
+        self._front_dialog(box)
+        self._pin_options_button_left(box, options_btn, yes_btn, no_btn)
+        # QMessageBox may ignore setMinimumSize; nudge size after layout for a
+        # roomier Options… row (best-effort; native styles can still clamp).
+        hint = box.sizeHint()
+        target_w = max(450, hint.width(), box.width())
+        target_h = max(140, hint.height(), box.height())
+        box.setMinimumSize(target_w, target_h)
+        box.resize(target_w, target_h)
+        # Pin again after resize in case the button box relayouts.
+        self._pin_options_button_left(box, options_btn, yes_btn, no_btn)
+        result = box.exec()
+        clicked = box.clickedButton()
+        if clicked is options_btn:
+            return "options"
+        if clicked is yes_btn or result == QMessageBox.StandardButton.Yes:
+            return "yes"
+        return "no"
+
+    @staticmethod
+    def _pin_options_button_left(
+        box: QMessageBox,
+        options_btn: QPushButton,
+        yes_btn: QPushButton,
+        no_btn: QPushButton,
+    ) -> None:
+        """Force row order: Options… | stretch | Yes | No."""
+        button_box = box.findChild(QDialogButtonBox)
+        if button_box is None:
+            return
+        layout = button_box.layout()
+        if layout is None:
+            return
+        while layout.count():
+            layout.takeAt(0)
+        layout.addWidget(options_btn)
+        layout.addStretch(1)
+        layout.addWidget(yes_btn)
+        layout.addWidget(no_btn)
+
+    def _show_texture_replace_dialog(
+        self, asset: AssetInfo, file_path: str
+    ) -> TextureReplaceOptions | None:
+        options = asset.texture_replace_options()
+        old_pixmap = None
+        try:
+            preview = asset.get_preview()
+            data = getattr(preview, "data", None)
+            to_qpixmap = getattr(data, "toqpixmap", None)
+            if callable(to_qpixmap):
+                old_pixmap = to_qpixmap()
+        except Exception:
+            old_pixmap = None
+        dialog = TextureReplaceDialog(
+            options,
+            texture_name=asset.name or "",
+            file_name=Path(file_path).name,
+            old_pixmap=old_pixmap,
+            new_pixmap=pixmap_from_path(file_path),
+            always_show=self.viewmodel.always_show_texture_options,
+            parent=self,
+        )
+        self._front_dialog(dialog)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        self.viewmodel.set_always_show_texture_options(dialog.always_show_checked())
+        return dialog.collect_options()
+
+    def _confirm_texture_replace(
+        self, asset: AssetInfo, file_path: str
+    ) -> TextureReplaceOptions | None:
+        if self.viewmodel.always_show_texture_options:
+            return self._show_texture_replace_dialog(asset, file_path)
+        choice = self._ask_replace_with_options(
+            "Confirm Replace",
+            f"Replace '{asset.name}' with '{Path(file_path).name}'?",
+        )
+        if choice == "yes":
+            return asset.texture_replace_options()
+        if choice == "options":
+            return self._show_texture_replace_dialog(asset, file_path)
+        return None
 
     def _confirm_replace(self, asset: AssetInfo, file_path: str) -> bool:
         return self._ask_yes_no(
@@ -910,19 +1030,10 @@ class ABVMEMainWindow(QMainWindow):
             return
 
         first_file = decision.file_paths[0]
-        if decision.action == DropAction.REPLACE:
-            if not self._confirm_replace(asset, first_file):
+        if decision.action in (DropAction.REPLACE, DropAction.REPLACE_CONFIRM):
+            if not self._start_replace(asset, first_file):
                 event.ignore()
                 return
-            self.viewmodel.edit_asset(asset, first_file)
-            event.acceptProposedAction()
-            return
-
-        if decision.action == DropAction.REPLACE_CONFIRM:
-            if not self._confirm_unmatched_textasset_replace(asset, first_file):
-                event.ignore()
-                return
-            self.viewmodel.edit_asset(asset, first_file)
             event.acceptProposedAction()
             return
 

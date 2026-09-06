@@ -14,6 +14,7 @@ from PySide6.QtGui import QDropEvent
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from models.asset_model import AssetInfo, EditResult, ResultStatus
+from models.texture_replace_options import TextureReplaceOptions
 from viewmodels.main_viewmodel import MainViewModel
 from views.main_window import ABVMEMainWindow
 
@@ -140,7 +141,7 @@ class ReplaceCopyWindowTests(unittest.TestCase):
         self.assertEqual(get_open.call_args.args[1], "Select replacement file")
         ask.assert_not_called()
 
-    @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=True)
+    @patch.object(ABVMEMainWindow, "_confirm_texture_replace")
     @patch(
         "views.main_window.QFileDialog.getOpenFileName",
         return_value=("icon.png", ""),
@@ -148,8 +149,10 @@ class ReplaceCopyWindowTests(unittest.TestCase):
     def test_file_dialog_texture_confirms_replace(
         self,
         _get_open: MagicMock,
-        ask: MagicMock,
+        confirm: MagicMock,
     ) -> None:
+        options = TextureReplaceOptions(target_format=25)
+        confirm.return_value = options
         asset = FakeAsset(
             name="Icon", type_name="Texture2D", container="assets/icon.png"
         )
@@ -162,12 +165,12 @@ class ReplaceCopyWindowTests(unittest.TestCase):
 
         self.window._on_edit_button_clicked()
 
-        self.assertTrue(ask.called)
-        self.assertEqual(ask.call_args.args[0], "Confirm Replace")
-        self.assertEqual(ask.call_args.args[1], "Replace 'Icon' with 'icon.png'?")
-        self.window.viewmodel.edit_asset.assert_called_once_with(asset, "icon.png")
+        self.assertTrue(confirm.called)
+        self.window.viewmodel.edit_asset.assert_called_once_with(
+            asset, "icon.png", texture_options=options
+        )
 
-    @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=False)
+    @patch.object(ABVMEMainWindow, "_confirm_texture_replace", return_value=None)
     @patch(
         "views.main_window.QFileDialog.getOpenFileName",
         return_value=("icon.png", ""),
@@ -175,7 +178,7 @@ class ReplaceCopyWindowTests(unittest.TestCase):
     def test_file_dialog_texture_confirm_no_skips_edit(
         self,
         _get_open: MagicMock,
-        _ask: MagicMock,
+        _confirm: MagicMock,
     ) -> None:
         asset = FakeAsset(
             name="Icon", type_name="Texture2D", container="assets/icon.png"
@@ -300,7 +303,8 @@ class AskYesNoDialogTests(unittest.TestCase):
         self.assertEqual(len(boxes), 1)
         box = boxes[0]
         flags = box.windowFlags()
-        self.assertTrue(flags & Qt.WindowType.WindowStaysOnTopHint)
+        # Stay-on-top is only used briefly while bringing the dialog forward.
+        self.assertFalse(bool(flags & Qt.WindowType.WindowStaysOnTopHint))
         self.assertEqual(box.windowModality(), Qt.WindowModality.ApplicationModal)
         self.assertTrue(box.isVisible())
         self.assertEqual(box.windowTitle(), "Confirm Replace")
@@ -337,8 +341,10 @@ class ReplaceCopyDropTests(unittest.TestCase):
         self._mime = mime
         return event
 
-    @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=True)
-    def test_texture_drop_confirm_copy(self, ask: MagicMock) -> None:
+    @patch.object(ABVMEMainWindow, "_confirm_texture_replace")
+    def test_texture_drop_confirm_copy(self, confirm: MagicMock) -> None:
+        options = TextureReplaceOptions()
+        confirm.return_value = options
         asset = FakeAsset(
             name="Icon", type_name="Texture2D", container="assets/icon.png"
         )
@@ -348,15 +354,15 @@ class ReplaceCopyDropTests(unittest.TestCase):
 
         self.window.dropEvent(self._drop(self.png_path))
 
-        self.assertEqual(ask.call_args.args[0], "Confirm Replace")
-        self.assertEqual(
-            ask.call_args.args[1],
-            f"Replace 'Icon' with '{Path(self.png_path).name}'?",
-        )
+        self.assertTrue(confirm.called)
         self.window.viewmodel.edit_asset.assert_called_once()
         called_asset, called_path = self.window.viewmodel.edit_asset.call_args.args
         self.assertIs(called_asset, asset)
         self.assertEqual(Path(called_path), Path(self.png_path))
+        self.assertIs(
+            self.window.viewmodel.edit_asset.call_args.kwargs.get("texture_options"),
+            options,
+        )
 
     @patch.object(ABVMEMainWindow, "_ask_yes_no", return_value=True)
     def test_textasset_drop_unmatched_suffix_confirm_copy(self, ask: MagicMock) -> None:

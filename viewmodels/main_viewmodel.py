@@ -17,6 +17,7 @@ from models.save_options import (
     parse_resource_patch_mode,
     parse_show_only_changed_files,
 )
+from models.texture_replace_options import TextureReplaceOptions
 from services import LoaderWorker, EditWorker, SaveWorker
 
 
@@ -88,6 +89,9 @@ class MainViewModel(QObject):
         self.save_options_expanded = bool(
             self._settings.value("save_options_expanded", False, type=bool)
         )
+        self.always_show_texture_options = bool(
+            self._settings.value("always_show_texture_options", False, type=bool)
+        )
         self.core: Optional[ABVMECore] = None
         self.assets: list[AssetInfo] = []
         self.selected_assets: list[AssetInfo] = []
@@ -158,6 +162,12 @@ class MainViewModel(QObject):
     def set_save_options_expanded(self, expanded: bool) -> None:
         self.save_options_expanded = bool(expanded)
         self._settings.setValue("save_options_expanded", self.save_options_expanded)
+
+    def set_always_show_texture_options(self, enabled: bool) -> None:
+        self.always_show_texture_options = bool(enabled)
+        self._settings.setValue(
+            "always_show_texture_options", self.always_show_texture_options
+        )
 
     def set_packer(self, packer: str) -> None:
         self.persist_save_options(packer, self.resource_patch_mode, self.crc_mode)
@@ -304,13 +314,19 @@ class MainViewModel(QObject):
         """Check if export is possible (at least one asset selected)"""
         return len(self.selected_assets) > 0
 
-    def edit_asset(self, asset: AssetInfo, source_path: str) -> bool:
+    def edit_asset(
+        self,
+        asset: AssetInfo,
+        source_path: str,
+        texture_options: TextureReplaceOptions | None = None,
+    ) -> bool:
         """
         Edit asset with new data from source path
 
         Args:
             asset: Asset to edit
             source_path: Path to replacement data
+            texture_options: Texture2D encode/settings; ignored for other types
 
         Returns:
             True if edit started successfully, False otherwise
@@ -323,7 +339,9 @@ class MainViewModel(QObject):
 
         self.remember_replace_directory_from_path(source_path)
         self.edit_started.emit(f"Replacing {asset.name}...")
-        self.edit_worker = EditWorker(asset, source_path)
+        self.edit_worker = EditWorker(
+            asset, source_path, texture_options=texture_options
+        )
         self.edit_worker.finished.connect(self._on_edit_finished)
         self.edit_worker.start()
         return True

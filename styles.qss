@@ -347,6 +347,66 @@ QComboBox QAbstractItemView::item:selected {
     color: white;
 }
 
+/* --- Spin boxes: match ComboBox frame; custom up/down arrows --- */
+QSpinBox,
+QDoubleSpinBox {
+    background-color: #3c3c3c;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    padding: 5px 24px 5px 10px;
+    color: #cccccc;
+    min-width: 100px;
+}
+
+QSpinBox:hover,
+QDoubleSpinBox:hover {
+    border-color: #007acc;
+}
+
+QSpinBox:focus,
+QDoubleSpinBox:focus {
+    border: 1px solid #007acc;
+}
+
+QSpinBox::up-button,
+QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 20px;
+    border: none;
+    background: transparent;
+}
+
+QSpinBox::down-button,
+QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 20px;
+    border: none;
+    background: transparent;
+}
+
+QSpinBox::up-button:hover,
+QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover,
+QDoubleSpinBox::down-button:hover {
+    background-color: #4a4a4a;
+}
+
+QSpinBox::up-arrow,
+QDoubleSpinBox::up-arrow {
+    image: url(assets/angle-up-solid.svg);
+    width: 10px;
+    height: 10px;
+}
+
+QSpinBox::down-arrow,
+QDoubleSpinBox::down-arrow {
+    image: url(assets/angle-down-solid.svg);
+    width: 10px;
+    height: 10px;
+}
+
 /* --- List Widget --- */
 QListWidget {
     background-color: #252526;

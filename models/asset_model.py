@@ -16,6 +16,7 @@ from PIL import Image as PILImage
 from PIL.Image import Image
 
 from .save_options import StreamCapture
+from .texture_replace_options import TextureReplaceOptions, mipmap_count_for
 
 if TYPE_CHECKING:
     from UnityPy.enums import ClassIDType
@@ -302,7 +303,15 @@ class AssetInfo:
         self._dump_text = format_object_dump(self._obj.parse_as_dict())
         return self._dump_text
 
-    def edit_data(self, new_data: Image | str | BinaryIO) -> EditResult:
+    def texture_replace_options(self) -> TextureReplaceOptions:
+        data = self._obj.read()
+        return TextureReplaceOptions.from_texture(data)
+
+    def edit_data(
+        self,
+        new_data: Image | str | BinaryIO,
+        texture_options: TextureReplaceOptions | None = None,
+    ) -> EditResult:
         """
         Edit asset data with new content
         Supports Texture2D and TextAsset editing
@@ -348,7 +357,20 @@ class AssetInfo:
                         size=int(getattr(stream, "size", 0) or 0),
                     )
 
-                data.set_image(image_data)
+                if texture_options is None:
+                    data.set_image(image_data)
+                else:
+                    data.set_image(
+                        image_data,
+                        target_format=texture_options.resolve_target_format(data),
+                        mipmap_count=mipmap_count_for(
+                            image_data.width,
+                            image_data.height,
+                            has_mip_maps=texture_options.has_mip_maps,
+                            stored_count=texture_options.mipmap_count,
+                        ),
+                    )
+                    texture_options.apply_settings(data)
                 data.save()
                 raw = getattr(data, "image_data", b"") or b""
                 try:
