@@ -41,7 +41,8 @@ from viewmodels import MainViewModel
 from views.asset_table_widget import AssetTableWidget
 from views.drop_overlay import DropOverlay
 from views.preview_panel_widget import PreviewPanelWidget
-from utilities import FileDropWidget, get_resource_str
+from utilities.file_drop_widget import FileDropWidget
+from utilities.resource_path import get_resource_str
 from utilities.drop_classifier import (
     DropAction,
     DropDecision,

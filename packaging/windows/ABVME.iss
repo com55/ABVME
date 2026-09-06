@@ -80,6 +80,9 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}
 Filename: "{cmd}"; Parameters: "/c rmdir /s /q ""{localappdata}\{#MyAppName}\update"""; Flags: runhidden; RunOnceId: "DelUpdateCache"
 
 [Code]
+var
+  DeleteSettingsChecked: Boolean;
+
 function GetUninstallString(): String;
 var
   Key: String;
@@ -115,11 +118,87 @@ begin
   end;
 end;
 
+{ Interactive uninstall: checkbox page (default unchecked). Silent uninstall
+  (e.g. in-place upgrade) skips the page and never deletes settings. }
+procedure InitializeUninstallProgressForm();
+var
+  UninstallPage: TNewNotebookPage;
+  UninstallButton: TNewButton;
+  DeleteSettingsCheckbox: TNewCheckBox;
+  PageText: TNewStaticText;
+  OriginalPageNameLabel: String;
+  OriginalPageDescriptionLabel: String;
+  OriginalCancelButtonEnabled: Boolean;
+  OriginalCancelButtonModalResult: Integer;
+  Ctrl: TWinControl;
+begin
+  DeleteSettingsChecked := False;
+  if UninstallSilent then
+    Exit;
+
+  Ctrl := UninstallProgressForm.CancelButton;
+  UninstallButton := TNewButton.Create(UninstallProgressForm);
+  UninstallButton.Parent := UninstallProgressForm;
+  UninstallButton.Left := Ctrl.Left - Ctrl.Width - ScaleX(10);
+  UninstallButton.Top := Ctrl.Top;
+  UninstallButton.Width := Ctrl.Width;
+  UninstallButton.Height := Ctrl.Height;
+  UninstallButton.TabOrder := Ctrl.TabOrder;
+  UninstallButton.Caption := 'Uninstall';
+  UninstallButton.ModalResult := mrOk;
+  UninstallProgressForm.CancelButton.TabOrder := UninstallButton.TabOrder + 1;
+
+  UninstallPage := TNewNotebookPage.Create(UninstallProgressForm);
+  UninstallPage.Notebook := UninstallProgressForm.InnerNotebook;
+  UninstallPage.Parent := UninstallProgressForm.InnerNotebook;
+  UninstallPage.Align := alClient;
+  UninstallProgressForm.InnerNotebook.ActivePage := UninstallPage;
+
+  Ctrl := UninstallProgressForm.StatusLabel;
+  PageText := TNewStaticText.Create(UninstallProgressForm);
+  PageText.Parent := UninstallPage;
+  PageText.Top := Ctrl.Top;
+  PageText.Left := Ctrl.Left;
+  PageText.Width := Ctrl.Width;
+  PageText.Height := ScaleY(40);
+  PageText.AutoSize := False;
+  PageText.WordWrap := True;
+  PageText.ShowAccelChar := False;
+  PageText.Caption := 'Click Uninstall to remove {#MyAppName} from this computer.';
+
+  DeleteSettingsCheckbox := TNewCheckBox.Create(UninstallProgressForm);
+  DeleteSettingsCheckbox.Parent := UninstallPage;
+  DeleteSettingsCheckbox.Top := PageText.Top + PageText.Height + ScaleY(12);
+  DeleteSettingsCheckbox.Left := Ctrl.Left;
+  DeleteSettingsCheckbox.Width := Ctrl.Width;
+  DeleteSettingsCheckbox.Caption := 'Also delete application settings (preferences)';
+  DeleteSettingsCheckbox.Checked := False;
+
+  OriginalPageNameLabel := UninstallProgressForm.PageNameLabel.Caption;
+  OriginalPageDescriptionLabel := UninstallProgressForm.PageDescriptionLabel.Caption;
+  OriginalCancelButtonEnabled := UninstallProgressForm.CancelButton.Enabled;
+  OriginalCancelButtonModalResult := UninstallProgressForm.CancelButton.ModalResult;
+
+  UninstallProgressForm.PageNameLabel.Caption := 'Uninstall {#MyAppName}';
+  UninstallProgressForm.PageDescriptionLabel.Caption := 'Remove the application. Settings are kept unless you opt in below.';
+  UninstallProgressForm.CancelButton.Enabled := True;
+  UninstallProgressForm.CancelButton.ModalResult := mrCancel;
+
+  if UninstallProgressForm.ShowModal = mrCancel then
+    Abort;
+
+  DeleteSettingsChecked := DeleteSettingsCheckbox.Checked;
+
+  UninstallButton.Visible := False;
+  UninstallProgressForm.PageNameLabel.Caption := OriginalPageNameLabel;
+  UninstallProgressForm.PageDescriptionLabel.Caption := OriginalPageDescriptionLabel;
+  UninstallProgressForm.CancelButton.Enabled := OriginalCancelButtonEnabled;
+  UninstallProgressForm.CancelButton.ModalResult := OriginalCancelButtonModalResult;
+  UninstallProgressForm.InnerNotebook.ActivePage := UninstallProgressForm.InstallingPage;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if CurUninstallStep = usUninstall then
-  begin
-    if MsgBox('Also delete application settings (preferences)?', mbConfirmation, MB_YESNO) = IDYES then
-      RegDeleteKeyIncludingSubkeys(HKCU, 'Software\ABVME');
-  end;
+  if (CurUninstallStep = usPostUninstall) and DeleteSettingsChecked then
+    RegDeleteKeyIncludingSubkeys(HKCU, 'Software\ABVME');
 end;

@@ -70,7 +70,9 @@ jobs:
           enable-plugins: pyside6
           windows-console-mode: disable
           windows-icon-from-ico: assets/icon.ico
-          include-package: UnityPy.resources
+          include-package: |
+            UnityPy.resources
+            utilities
           include-package-data: |
             UnityPy
             archspec
@@ -261,7 +263,9 @@ jobs:
           script-name: main.py
           mode: standalone
           enable-plugins: pyside6
-          include-package: UnityPy.resources
+          include-package: |
+            UnityPy.resources
+            utilities
           include-package-data: |
             UnityPy
             archspec
