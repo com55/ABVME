@@ -280,7 +280,9 @@ jobs:
       - name: Prepare Assets for Upload 📦
         id: linux_prepare_assets
         run: |
-          distDir=$(find dist_main -maxdepth 1 -name "*.dist" -type d | head -1)
+          distDir=$(find dist_main -maxdepth 1 -name "*.dist" -type d | head -1)          # archspec resolves cpu/../json; Linux requires cpu to exist.
+          mkdir -p "$distDir/archspec/cpu"
+          touch "$distDir/archspec/cpu/keep.txt"
           chmod +x "$distDir/ABVME"
           
           # Release (from workflow_call or tag push)
