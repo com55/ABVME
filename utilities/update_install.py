@@ -67,7 +67,7 @@ def inno_silent_args(log_path: Path) -> list[str]:
         "/CLOSEAPPLICATIONS",
         "/FORCECLOSEAPPLICATIONS",
         "/NORESTARTAPPLICATIONS",
-        f'/LOG={log_path}',
+        f"/LOG={log_path}",
     ]
 
 
@@ -86,17 +86,28 @@ def _ps_single_quoted(value: str) -> str:
 
 
 def build_relaunch_watcher_ps1(pending_json: Path, setup_process_name: str) -> str:
+    """Wait for Setup to finish, then relaunch the installed exe.
+
+    Must be started via ShellExecute (not a child of ABVME) so it survives when
+    the app hard-exits for a clean install.
+    """
     pending_literal = _ps_single_quoted(str(pending_json))
     process_literal = _ps_single_quoted(setup_process_name)
     lines = [
         "$ErrorActionPreference = 'Stop'",
         f"$Meta = Get-Content -LiteralPath {pending_literal} -Raw | ConvertFrom-Json",
         f"$SetupName = {process_literal}",
-        "for ($i = 0; $i -lt 60; $i++) {",
+        "for ($i = 0; $i -lt 120; $i++) {",
         "    if (Get-Process -Name $SetupName -ErrorAction SilentlyContinue) { break }",
         "    Start-Sleep -Milliseconds 500",
         "}",
         "Wait-Process -Name $SetupName -ErrorAction SilentlyContinue",
+        # Give Inno a moment to finish copying / releasing ABVME.exe.
+        "Start-Sleep -Seconds 1",
+        "for ($i = 0; $i -lt 30; $i++) {",
+        "    if (Test-Path -LiteralPath $Meta.target_exe_path) { break }",
+        "    Start-Sleep -Milliseconds 500",
+        "}",
         "if ($Meta.relaunch_args -and @($Meta.relaunch_args).Count -gt 0) {",
         "    Start-Process -FilePath $Meta.target_exe_path -ArgumentList @($Meta.relaunch_args)",
         "} else {",
@@ -107,7 +118,8 @@ def build_relaunch_watcher_ps1(pending_json: Path, setup_process_name: str) -> s
     return "\r\n".join(lines) + "\r\n"
 
 
-def _shell_execute(file: str, params: str, work_dir: str) -> None:
+def _shell_execute(file: str, params: str, work_dir: str, *, show_cmd: int = 1) -> None:
+    """Launch an independent process via ShellExecuteW (survives ABVME exit)."""
     if os.name != "nt":
         subprocess.Popen(
             [file, *params.split()],
@@ -124,7 +136,7 @@ def _shell_execute(file: str, params: str, work_dir: str) -> None:
         file,
         params,
         work_dir,
-        1,  # SW_SHOWNORMAL — /SILENT still shows progress
+        show_cmd,
     )
     if result <= 32:
         raise OSError(f"ShellExecuteW failed with code {result}")
@@ -157,29 +169,13 @@ def launch_setup_and_prepare_relaunch(
 
     strip_motw(setup_path)
     args = inno_silent_args(log_path)
-    params = subprocess.list2cmdline(args) if os.name == "nt" else " ".join(args)
+    setup_params = subprocess.list2cmdline(args) if os.name == "nt" else " ".join(args)
 
-    if os.name == "nt":
-        subprocess.Popen(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(watcher_ps1),
-            ],
-            cwd=str(target_exe.parent),
-            close_fds=True,
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-        )
-    else:
-        subprocess.Popen(
-            ["powershell", "-NoProfile", "-File", str(watcher_ps1)],
-            cwd=str(target_exe.parent),
-            close_fds=True,
-            start_new_session=True,
-        )
-
-    _shell_execute(str(setup_path), params, str(setup_path.parent))
+    # Independent of ABVME's process tree — Popen children can die with the app.
+    watcher_params = (
+        f'-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass '
+        f'-File "{watcher_ps1}"'
+    )
+    _shell_execute("powershell.exe", watcher_params, str(cache), show_cmd=0)
+    _shell_execute(str(setup_path), setup_params, str(setup_path.parent), show_cmd=1)
     logger.info("Launched setup %s with args %s", setup_path, args)
