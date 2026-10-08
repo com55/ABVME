@@ -83,6 +83,27 @@ _DUMP_MAX_STR = 400
 _DUMP_INDENT = "      "
 EMPTY_CELL_TEXT = "(none)"
 
+# Objects whose bulk data can live outside the object, in a .resS / .resource
+# file of the bundle: (field, size attribute, path attribute) per layout.
+_STREAM_TYPES = {"Texture2D", "Texture2DArray", "Texture3D", "Cubemap", "Mesh", "AudioClip", "VideoClip"}
+_STREAM_FIELDS = (
+    ("m_StreamData", "size", "path"),  # StreamingInfo: textures, meshes
+    ("m_Resource", "m_Size", "m_Source"),  # StreamedResource: AudioClip
+    ("m_ExternalResources", "m_Size", "m_Source"),  # StreamedResource: VideoClip
+)
+
+
+def streamed_size(data: Any) -> int:
+    """Bytes a parsed object keeps in a streamed resource file (0 if none)."""
+    for field, size_attr, path_attr in _STREAM_FIELDS:
+        info = getattr(data, field, None)
+        if info is not None and getattr(info, path_attr, None):
+            try:
+                return max(0, int(getattr(info, size_attr, 0) or 0))
+            except (TypeError, ValueError):
+                return 0
+    return 0
+
 
 def format_byte_size(n: int) -> str:
     """Format a byte count as 1024-based human-readable text."""
@@ -245,9 +266,32 @@ class AssetInfo:
         self.is_editable: bool = self.obj_type in unity.edit_types
         self.is_exportable: bool = self.obj_type in unity.export_types
         self._readed_data = None
+        self._stream_size: Optional[int] = None
         self._preview_data: Optional[PreviewResult] = None
         self._dump_text: Optional[str] = None
         self._register_stream_capture = register_stream_capture
+
+    def stream_size(self) -> int:
+        """Bytes this object keeps in a .resS / .resource file (0 if none).
+
+        The object is parsed once for this and not kept (unless it was already
+        loaded), so listing a bundle does not hold every texture in memory.
+        """
+        if self._stream_size is None:
+            size = 0
+            if self.obj_type.name in _STREAM_TYPES:
+                try:
+                    data = self._readed_data or self._obj.read()
+                    size = streamed_size(data)
+                except Exception:  # noqa: BLE001 - a broken object just has no stream size
+                    size = 0
+            self._stream_size = size
+        return self._stream_size
+
+    @property
+    def total_size(self) -> int:
+        """The object plus its streamed data: what the Size column shows."""
+        return self.byte_size + self.stream_size()
 
     def _get_readed_data(self):
         """Lazy load and cache asset data"""
