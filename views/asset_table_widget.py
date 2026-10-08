@@ -194,7 +194,9 @@ class AssetTableWidget(QWidget):
             container_item.setFlags(container_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row, _COL_CONTAINER, container_item)
 
-            size_item = _ByteSizeItem(int(getattr(asset, "byte_size", 0) or 0))
+            # Includes data streamed from the bundle's .resS / .resource file.
+            size = getattr(asset, "total_size", None)
+            size_item = _ByteSizeItem(int((size if size is not None else getattr(asset, "byte_size", 0)) or 0))
             size_item.setFlags(size_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.table.setItem(row, _COL_SIZE, size_item)
 
