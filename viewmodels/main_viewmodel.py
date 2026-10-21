@@ -101,6 +101,11 @@ class MainViewModel(QObject):
         self.selected_assets: list[AssetInfo] = []
         self._output_directory: str | None = None
         self._replace_directory: str | None = None
+        self._batch_queue: list[
+            tuple[AssetInfo, str, TextureReplaceOptions | None]
+        ] = []
+        self._batch_total = 0
+        self._batch_failed = 0
 
         # Background workers
         self.loader_worker: Optional[LoaderWorker] = None
@@ -371,6 +376,36 @@ class MainViewModel(QObject):
             )
             return False
 
+        self._start_edit_worker(asset, source_path, texture_options)
+        return True
+
+    def edit_assets(
+        self, jobs: list[tuple[AssetInfo, str, TextureReplaceOptions | None]]
+    ) -> bool:
+        """Replace several assets one after another; reports one summary at the end."""
+        if not jobs:
+            return False
+        if self.edit_worker and self.edit_worker.isRunning():
+            self.status_message.emit(
+                "Another replace is currently running.", logging.WARNING
+            )
+            return False
+        self._batch_queue = list(jobs)
+        self._batch_total = len(jobs)
+        self._batch_failed = 0
+        self._start_next_batch_job()
+        return True
+
+    def _start_next_batch_job(self) -> None:
+        asset, source_path, texture_options = self._batch_queue.pop(0)
+        self._start_edit_worker(asset, source_path, texture_options)
+
+    def _start_edit_worker(
+        self,
+        asset: AssetInfo,
+        source_path: str,
+        texture_options: TextureReplaceOptions | None,
+    ) -> None:
         self.remember_replace_directory_from_path(source_path)
         self.edit_started.emit(f"Replacing {asset.name}...")
         self.edit_worker = EditWorker(
@@ -378,7 +413,28 @@ class MainViewModel(QObject):
         )
         self.edit_worker.finished.connect(self._on_edit_finished)
         self.edit_worker.start()
-        return True
+
+    def _advance_batch(self, result: EditResult) -> None:
+        if not result.is_success:
+            self._batch_failed += 1
+        if self._batch_queue:
+            # EditWorker.finished is emitted from run(); let the thread exit
+            # before starting the next worker.
+            self.edit_worker.wait()
+            self._start_next_batch_job()
+            return
+        total, failed = self._batch_total, self._batch_failed
+        self._batch_total = 0
+        if total > 1:
+            if failed:
+                self.status_message.emit(
+                    f"Replaced {total - failed} of {total} assets; {failed} failed.",
+                    logging.ERROR,
+                )
+            else:
+                self.status_message.emit(
+                    f"Replaced {total} assets.", logging.INFO
+                )
 
     def _on_edit_finished(self, asset_obj: object, result_obj: object) -> None:
         """Handle edit completion"""
@@ -386,6 +442,8 @@ class MainViewModel(QObject):
         result = result_obj if isinstance(result_obj, EditResult) else None
 
         if not asset or not result:
+            self._batch_queue.clear()
+            self._batch_total = 0
             self.status_message.emit(
                 "Edit thread returned invalid data.", logging.ERROR
             )
@@ -406,6 +464,9 @@ class MainViewModel(QObject):
             log.info(message)
         else:
             log.error(message)
+
+        if self._batch_total:
+            self._advance_batch(result)
 
     def export_single_asset(self, asset: AssetInfo, output_path: Path) -> ExportResult:
         """

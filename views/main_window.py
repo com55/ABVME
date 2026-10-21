@@ -54,7 +54,9 @@ from models import AssetInfo, EditResult
 from models.save_options import CRC_LABELS, PACKER_LABELS, RESOURCE_LABELS
 from models.texture_replace_options import TextureReplaceOptions
 from views.overwrite_confirm import confirm_overwrite_existing
+from utilities.replace_matcher import ReplaceTarget, match_files
 from views.about_dialog import AboutDialog
+from views.batch_replace_dialog import BatchReplaceDialog
 from views.texture_replace_dialog import TextureReplaceDialog, pixmap_from_path
 from utilities.app_info import app_version, window_title
 from utilities.updater import (
@@ -817,6 +819,44 @@ class ABVMEMainWindow(QMainWindow):
             return False
         return self.viewmodel.edit_asset(asset, file_path)
 
+    def _start_batch_replace(self, files: list[str]) -> bool:
+        assets = [
+            asset
+            for asset in self.viewmodel.assets
+            if self.viewmodel.is_editing_supported(asset)
+        ]
+        targets = [
+            ReplaceTarget(
+                index, asset.name, asset.obj_type.name, asset.container, asset.path_id
+            )
+            for index, asset in enumerate(assets)
+        ]
+
+        def choose_texture_options(
+            file_path: str, target: ReplaceTarget | None
+        ) -> TextureReplaceOptions | None:
+            asset = assets[target.index] if target is not None else None
+            # "OK" because nothing is replaced until the summary dialog confirms.
+            return self._show_texture_replace_dialog(asset, file_path, "OK")
+
+        dialog = BatchReplaceDialog(
+            match_files(files, targets), targets, choose_texture_options, self
+        )
+        self._front_dialog(dialog)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
+
+        shared_options = dialog.texture_options()
+        jobs = []
+        for file_path, target in dialog.selected_jobs():
+            asset = assets[target.index]
+            options = None
+            if target.kind == "Texture2D":
+                own = asset.texture_replace_options()
+                options = own if shared_options is None else shared_options.for_texture(own)
+            jobs.append((asset, file_path, options))
+        return self.viewmodel.edit_assets(jobs)
+
     def _front_dialog(self, box: QDialog) -> None:
         self.raise_()
         self.activateWindow()
@@ -906,12 +946,16 @@ class ABVMEMainWindow(QMainWindow):
         layout.addWidget(no_btn)
 
     def _show_texture_replace_dialog(
-        self, asset: AssetInfo, file_path: str
+        self,
+        asset: AssetInfo | None,
+        file_path: str,
+        confirm_text: str = "Replace",
     ) -> TextureReplaceOptions | None:
-        options = asset.texture_replace_options()
+        # asset is None in batch replace when no texture row is chosen yet.
+        options = asset.texture_replace_options() if asset else TextureReplaceOptions()
         old_pixmap = None
         try:
-            preview = asset.get_preview()
+            preview = asset.get_preview() if asset else None
             data = getattr(preview, "data", None)
             to_qpixmap = getattr(data, "toqpixmap", None)
             if callable(to_qpixmap):
@@ -920,11 +964,12 @@ class ABVMEMainWindow(QMainWindow):
             old_pixmap = None
         dialog = TextureReplaceDialog(
             options,
-            texture_name=asset.name or "",
+            texture_name=asset.name if asset else "",
             file_name=Path(file_path).name,
             old_pixmap=old_pixmap,
             new_pixmap=pixmap_from_path(file_path),
             always_show=self.viewmodel.always_show_texture_options,
+            confirm_text=confirm_text,
             parent=self,
         )
         self._front_dialog(dialog)
@@ -1065,6 +1110,7 @@ class ABVMEMainWindow(QMainWindow):
             selected_name=asset.name if asset else None,
             selected_container=asset.container if asset else None,
             can_replace=bool(asset and self.viewmodel.is_editing_supported(asset)),
+            has_assets=bool(self.viewmodel.assets),
         )
 
     def _sync_drop_overlay(self) -> None:
@@ -1135,6 +1181,13 @@ class ABVMEMainWindow(QMainWindow):
 
         if decision.action == DropAction.OPEN:
             self.viewmodel.load_files_from_paths(list(decision.file_paths))
+            event.acceptProposedAction()
+            return
+
+        if decision.action == DropAction.BATCH_REPLACE:
+            if not self._start_batch_replace(list(decision.file_paths)):
+                event.ignore()
+                return
             event.acceptProposedAction()
             return
 

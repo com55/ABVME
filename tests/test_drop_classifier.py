@@ -95,6 +95,51 @@ class ClassifyDropTests(unittest.TestCase):
         )
         self.assertEqual(d.action, DropAction.REPLACE_CONFIRM)
 
+    def test_multiple_files_with_loaded_assets_is_batch(self):
+        d = classify_drop(
+            ["a.png", "b.json"],
+            selected_type=None,
+            selected_name=None,
+            selected_container=None,
+            can_replace=False,
+            has_assets=True,
+        )
+        self.assertEqual(d.action, DropAction.BATCH_REPLACE)
+        self.assertEqual(d.title, "Replace 2 files")
+
+    def test_multiple_files_without_assets_rejects(self):
+        d = classify_drop(
+            ["a.png", "b.json"],
+            selected_type=None,
+            selected_name=None,
+            selected_container=None,
+            can_replace=False,
+            has_assets=False,
+        )
+        self.assertEqual(d.action, DropAction.REJECT)
+
+    def test_single_file_with_loaded_assets_keeps_single_flow(self):
+        d = classify_drop(
+            ["icon.png"],
+            selected_type="Texture2D",
+            selected_name="Icon",
+            selected_container="",
+            can_replace=True,
+            has_assets=True,
+        )
+        self.assertEqual(d.action, DropAction.REPLACE)
+
+    def test_bundles_still_open_with_loaded_assets(self):
+        d = classify_drop(
+            ["a.bundle", "b.bundle"],
+            selected_type=None,
+            selected_name=None,
+            selected_container=None,
+            can_replace=False,
+            has_assets=True,
+        )
+        self.assertEqual(d.action, DropAction.OPEN)
+
     def test_textasset_without_selection_rejects(self):
         d = classify_drop(
             ["hero.json"],

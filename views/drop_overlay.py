@@ -45,7 +45,7 @@ _ARROW_STYLE = (
 
 
 def _style_action(action: DropAction) -> DropAction:
-    if action == DropAction.REPLACE_CONFIRM:
+    if action in (DropAction.REPLACE_CONFIRM, DropAction.BATCH_REPLACE):
         return DropAction.REPLACE
     return action
 

@@ -97,6 +97,7 @@ class TextureReplaceDialog(QDialog):
         old_pixmap: QPixmap | None = None,
         new_pixmap: QPixmap | None = None,
         always_show: bool = False,
+        confirm_text: str = "Replace",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -239,7 +240,7 @@ class TextureReplaceDialog(QDialog):
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
         self.cancel_button = QPushButton("Cancel")
-        self.replace_button = QPushButton("Replace")
+        self.replace_button = QPushButton(confirm_text)
         self.replace_button.setDefault(True)
         self.cancel_button.clicked.connect(self.reject)
         self.replace_button.clicked.connect(self.accept)

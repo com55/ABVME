@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 DESTINATION_FORMAT_LABEL = "Use destination format"
@@ -131,6 +131,14 @@ class TextureReplaceOptions:
             lightmap_format=_as_int(getattr(data, "m_LightmapFormat", 0), 0),
             color_space=color_space,
         )
+
+    def for_texture(self, own: TextureReplaceOptions) -> TextureReplaceOptions:
+        """Shared options applied to one texture, keeping its own mip count and
+        leaving color space unset when that texture has none."""
+        color_space = own.color_space
+        if color_space is not None and self.color_space is not None:
+            color_space = self.color_space
+        return replace(self, mipmap_count=own.mipmap_count, color_space=color_space)
 
     def resolve_target_format(self, data: Any) -> int:
         if self.target_format is not None:
