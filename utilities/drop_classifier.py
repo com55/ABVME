@@ -14,6 +14,7 @@ class DropAction(StrEnum):
     OPEN = "open"
     REPLACE = "replace"
     REPLACE_CONFIRM = "replace_confirm"
+    BATCH_REPLACE = "batch_replace"
     REJECT = "reject"
 
 
@@ -63,6 +64,7 @@ def classify_drop(
     selected_name: str | None,
     selected_container: str | None,
     can_replace: bool,
+    has_assets: bool = False,
 ) -> DropDecision:
     files = tuple(path for path in paths if path)
     if not files:
@@ -80,6 +82,11 @@ def classify_drop(
             files,
             "Cannot drop",
             "Do not mix bundle files with replacement files",
+        )
+
+    if len(files) > 1 and has_assets:
+        return DropDecision(
+            DropAction.BATCH_REPLACE, files, f"Replace {len(files)} files", names
         )
 
     if not can_replace or not selected_type or not selected_name:

@@ -55,6 +55,24 @@ def _texture(**overrides: object) -> SimpleNamespace:
     return data
 
 
+class SharedOptionsForTextureTests(unittest.TestCase):
+    def test_keeps_own_mip_count_and_takes_shared_settings(self):
+        shared = TextureReplaceOptions(
+            target_format=4, mipmap_count=9, filter_mode=2, color_space=1
+        )
+        own = TextureReplaceOptions(mipmap_count=3, filter_mode=0, color_space=0)
+        merged = shared.for_texture(own)
+        self.assertEqual(merged.mipmap_count, 3)
+        self.assertEqual(merged.filter_mode, 2)
+        self.assertEqual(merged.target_format, 4)
+        self.assertEqual(merged.color_space, 1)
+
+    def test_texture_without_color_space_stays_without(self):
+        shared = TextureReplaceOptions(color_space=1)
+        own = TextureReplaceOptions(color_space=None)
+        self.assertIsNone(shared.for_texture(own).color_space)
+
+
 class TextureReplaceOptionsTests(unittest.TestCase):
     def test_format_choices_start_with_destination_and_include_astc(self) -> None:
         labels = [label for label, _value in TEXTURE_FORMAT_CHOICES]
