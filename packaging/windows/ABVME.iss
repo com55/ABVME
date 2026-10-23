@@ -51,7 +51,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "associate"; Description: "Associate .bundle and .unity3d files with {#MyAppName}"; GroupDescription: "File associations:"; Flags: checkedonce
 
 [Files]
 Source: "dist_main\ABVME.dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -61,17 +60,33 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
-Root: HKA; Subkey: "Software\Classes\.bundle\OpenWithProgids"; ValueType: string; ValueName: "{#MyAppProgIdBundle}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\.bundle"; ValueType: string; ValueName: ""; ValueData: "{#MyAppProgIdBundle}"; Flags: uninsdeletevalue; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdBundle}"; ValueType: string; ValueName: ""; ValueData: "Unity Asset Bundle"; Flags: uninsdeletekey; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdBundle}\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdBundle}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
+; Advertise ABVME as a handler without changing the user's Windows default.
+Root: HKA; Subkey: "Software\Classes\.bundle\OpenWithProgids"; ValueType: none; ValueName: "{#MyAppProgIdBundle}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdBundle}"; ValueType: string; ValueName: ""; ValueData: "ABVME Asset Bundle"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdBundle}\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdBundle}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
 
-Root: HKA; Subkey: "Software\Classes\.unity3d\OpenWithProgids"; ValueType: string; ValueName: "{#MyAppProgIdUnity3d}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\.unity3d"; ValueType: string; ValueName: ""; ValueData: "{#MyAppProgIdUnity3d}"; Flags: uninsdeletevalue; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdUnity3d}"; ValueType: string; ValueName: ""; ValueData: "Unity Asset Bundle"; Flags: uninsdeletekey; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdUnity3d}\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdUnity3d}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\.unity3d\OpenWithProgids"; ValueType: none; ValueName: "{#MyAppProgIdUnity3d}"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdUnity3d}"; ValueType: string; ValueName: ""; ValueData: "ABVME Unity Asset Bundle"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdUnity3d}\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKA; Subkey: "Software\Classes\{#MyAppProgIdUnity3d}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+
+; Keep the legacy Applications ProgID functional for existing Windows UserChoice
+; records while giving it a stable display name in Open with.
+Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "{#MyAppName}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\SupportedTypes"; ValueType: string; ValueName: ".bundle"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\SupportedTypes"; ValueType: string; ValueName: ".unity3d"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\Applications\{#MyAppExeName}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#MyAppExeName}"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExeName}"; Flags: uninsdeletekey
+
+; Register with Default Apps so Windows owns the user's default selection.
+Root: HKA; Subkey: "Software\ABVME\Capabilities"; ValueType: string; ValueName: "ApplicationName"; ValueData: "{#MyAppName}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\ABVME\Capabilities"; ValueType: string; ValueName: "ApplicationDescription"; ValueData: "Asset Bundles Viewer Modifier and Exporter"
+Root: HKA; Subkey: "Software\ABVME\Capabilities"; ValueType: string; ValueName: "ApplicationIcon"; ValueData: "{app}\{#MyAppExeName},0"
+Root: HKA; Subkey: "Software\ABVME\Capabilities\FileAssociations"; ValueType: string; ValueName: ".bundle"; ValueData: "{#MyAppProgIdBundle}"
+Root: HKA; Subkey: "Software\ABVME\Capabilities\FileAssociations"; ValueType: string; ValueName: ".unity3d"; ValueData: "{#MyAppProgIdUnity3d}"
+Root: HKA; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: "Software\ABVME\Capabilities"; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
@@ -83,43 +98,29 @@ Filename: "{cmd}"; Parameters: "/c rmdir /s /q ""{localappdata}\{#MyAppName}\upd
 var
   DeleteSettingsChecked: Boolean;
 
-function GetUninstallString(): String;
+procedure RemoveLegacyExtensionDefault(const Extension, ProgId: String);
 var
-  Key: String;
-  S: String;
+  CurrentProgId: String;
 begin
-  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B306AF69-104D-40B1-9520-A69642EE2AE9}_is1';
-  S := '';
-  if not RegQueryStringValue(HKCU, Key, 'UninstallString', S) then
-    RegQueryStringValue(HKLM, Key, 'UninstallString', S);
-  Result := S;
+  { Releases through 0.3.0 wrote the extension's default value directly.
+    Remove only our legacy value; never touch Explorer's hashed UserChoice. }
+  if RegQueryStringValue(HKCU, 'Software\Classes\' + Extension, '', CurrentProgId) and
+     (CurrentProgId = ProgId) then
+    RegDeleteValue(HKCU, 'Software\Classes\' + Extension, '');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
-var
-  UnInstStr, OldExe: String;
-  ResultCode, Waited: Integer;
 begin
-  if CurStep <> ssInstall then
-    Exit;
-  UnInstStr := GetUninstallString();
-  if UnInstStr = '' then
-    Exit;
-  UnInstStr := RemoveQuotes(UnInstStr);
-  OldExe := ExtractFilePath(UnInstStr) + '{#MyAppExeName}';
-  if Exec(UnInstStr, '/VERYSILENT /NORESTART /SUPPRESSMSGBOXES', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  if CurStep = ssPostInstall then
   begin
-    Waited := 0;
-    while FileExists(OldExe) and (Waited < 100) do
-    begin
-      Sleep(200);
-      Waited := Waited + 1;
-    end;
+    RemoveLegacyExtensionDefault('.bundle', '{#MyAppProgIdBundle}');
+    RemoveLegacyExtensionDefault('.unity3d', '{#MyAppProgIdUnity3d}');
   end;
 end;
 
 { Interactive uninstall: checkbox page (default unchecked). Silent uninstall
-  (e.g. in-place upgrade) skips the page and never deletes settings. }
+  skips the page and never deletes settings. Inno upgrades use the stable AppId
+  directly and do not run the old uninstaller. }
 procedure InitializeUninstallProgressForm();
 var
   UninstallPage: TNewNotebookPage;

@@ -70,6 +70,11 @@ jobs:
           enable-plugins: pyside6
           windows-console-mode: disable
           windows-icon-from-ico: assets/icon.ico
+          file-description: ABVME
+          product-name: ABVME
+          company-name: com55
+          file-version: ${{ steps.build_version.outputs.version }}
+          product-version: ${{ steps.build_version.outputs.version }}
           include-package: |
             UnityPy.resources
             utilities
